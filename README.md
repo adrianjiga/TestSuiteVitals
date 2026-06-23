@@ -61,8 +61,9 @@ On the first run for a repo, collection defaults to the last 72 hours; afterward
 resumes from the stored watermark. Re-running is always safe — overlapping windows are
 de-duplicated.
 
-> **Status:** `collect` currently authenticates, lists workflow runs in the window, and
-> classifies them as completed or pending. Artifact fetching and event storage are in progress.
+> **Status:** `collect` currently authenticates, lists workflow runs in the window, classifies
+> them as completed or pending, and downloads + extracts each completed run's report artifacts
+> (counting expired ones). Report parsing and event storage are in progress.
 
 ## License
 

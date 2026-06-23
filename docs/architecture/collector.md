@@ -55,7 +55,12 @@ silently.
 The `collect` command currently authenticates (single Octokit transport, token chain per
 [D8](decisions.md#d8--auth-one-transport-pluggable-token-resolution)), loads state, computes
 the collection window (watermark / `--hours-back` / 72h default), lists workflow runs since
-that window, and classifies them into completed vs. pending. It stops before fetching
-artifacts, and does not yet advance the watermark (that happens only after a durable append,
-[D12](decisions.md#d12--crash-safety--idempotency)). Remaining M1 work: tier-1 artifact fetch
-→ JUnit adapter → NDJSON append with dedup → summary.
+that window, classifies them into completed vs. pending, and for the completed runs performs
+tiered artifact discovery ([D9](decisions.md#d9--artifact-discovery-tiered) tiers 1–2): list
+artifact names/sizes, then download the report-glob matches and extract them into a temp dir.
+Expired artifacts are counted, never silently dropped. `--dry-run` lists and partitions
+without downloading. The tier-3 sniff fallback is deferred to M5.
+
+It does not yet parse the extracted reports or advance the watermark (that happens only after
+a durable append, [D12](decisions.md#d12--crash-safety--idempotency)). Remaining M1 work:
+JUnit adapter → NDJSON append with dedup → summary.
