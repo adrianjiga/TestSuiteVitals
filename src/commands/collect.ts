@@ -1,8 +1,17 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineCommand } from "citty";
+import {
+  type ArtifactFetcher,
+  type ArtifactFetchSummary,
+  fetchReportArtifacts,
+} from "../artifacts/fetch.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
+import { downloadArtifactZip, listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
-import { parseRepoRef, repoSlug } from "../github/repo.js";
+import { parseRepoRef, type RepoRef, repoSlug } from "../github/repo.js";
 import { classifyRuns, listRunsSince } from "../github/runs.js";
 import { loadState, repoState } from "../state/state.js";
 
@@ -67,11 +76,51 @@ export const collectCommand = defineCommand({
       `Found ${runs.length} run(s): ${completed.length} completed, ${pending.length} pending.`,
     );
 
-    // M1 (next): fetch tier-1 artifacts for completed runs, dispatch the JUnit
-    // adapter, append NDJSON events with dedup, then advance the watermark (D12).
-    console.log("collect: artifact fetch not yet implemented (M1 in progress).");
+    const workdir = await mkdtemp(join(tmpdir(), "suitevitals-"));
+    try {
+      const { summary } = await fetchReportArtifacts(
+        makeArtifactFetcher(octokit, ref),
+        completed,
+        workdir,
+        { dryRun: args["dry-run"] },
+      );
+      printArtifactSummary(summary, args["dry-run"]);
+    } finally {
+      // Nothing consumes the extracted files yet; the adapter slice will. Clean up.
+      await rm(workdir, { recursive: true, force: true });
+    }
+
+    // M1 (next): dispatch the JUnit adapter over the extracted reports, append
+    // NDJSON events with dedup, then advance the watermark (D12).
   },
 });
+
+/** Builds an {@link ArtifactFetcher} bound to one repo's Octokit client. */
+function makeArtifactFetcher(octokit: GitHubClient["octokit"], ref: RepoRef): ArtifactFetcher {
+  return {
+    list: (runId) => listRunArtifacts(octokit, ref, runId),
+    download: (artifactId) => downloadArtifactZip(octokit, ref, artifactId),
+  };
+}
+
+function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean): void {
+  const verb = dryRun ? "Would download" : "Downloaded";
+  console.log(
+    `Artifacts: scanned ${summary.runsScanned} run(s), saw ${summary.artifactsSeen} artifact(s).`,
+  );
+  console.log(
+    `  ${verb} ${summary.reportArtifacts} report artifact(s)` +
+      (dryRun ? "." : `, extracted ${summary.filesExtracted} file(s).`),
+  );
+  if (summary.expiredArtifacts > 0) {
+    console.log(
+      `  ${summary.expiredArtifacts} expired artifact(s) across ${summary.runsWithExpired} run(s) (retention elapsed).`,
+    );
+  }
+  if (summary.skippedArtifacts > 0) {
+    console.log(`  ${summary.skippedArtifacts} non-report artifact(s) skipped.`);
+  }
+}
 
 /**
  * Resolves the GitHub client, printing the token source on success. On an auth
