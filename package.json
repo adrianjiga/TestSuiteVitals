@@ -1,0 +1,47 @@
+{
+  "name": "suitevitals",
+  "version": "0.0.0",
+  "description": "The vital signs of your test suite. A CLI-first, zero-infrastructure tool that retroactively ingests CI artifacts and surfaces flaky tests.",
+  "keywords": [
+    "flaky-tests",
+    "test-analytics",
+    "ci",
+    "github-actions",
+    "junit",
+    "playwright",
+    "cli"
+  ],
+  "license": "MIT",
+  "author": "Adrian Jiga",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "suitevitals": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check --write ."
+  },
+  "dependencies": {
+    "@octokit/rest": "^22.0.1",
+    "citty": "^0.2.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.1",
+    "@types/node": "^26.0.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
