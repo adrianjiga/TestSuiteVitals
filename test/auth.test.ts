@@ -45,14 +45,14 @@ describe("resolveToken (D8 precedence chain)", () => {
   });
 
   it("throws a clear AuthError when no source yields a token", async () => {
-    await expect(
-      resolveToken({ env: {}, runGhCli: async () => null }),
-    ).rejects.toBeInstanceOf(AuthError);
+    await expect(resolveToken({ env: {}, runGhCli: async () => null })).rejects.toBeInstanceOf(
+      AuthError,
+    );
   });
 
   it("error message lists all three token sources", async () => {
-    await expect(
-      resolveToken({ env: {}, runGhCli: async () => null }),
-    ).rejects.toThrow(/--token[\s\S]*GITHUB_TOKEN[\s\S]*gh auth login/);
+    await expect(resolveToken({ env: {}, runGhCli: async () => null })).rejects.toThrow(
+      /--token[\s\S]*GITHUB_TOKEN[\s\S]*gh auth login/,
+    );
   });
 });

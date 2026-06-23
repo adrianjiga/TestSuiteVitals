@@ -1,5 +1,5 @@
 import { Octokit } from "@octokit/rest";
-import { resolveToken, type ResolveTokenOptions, type TokenSource } from "./auth.js";
+import { type ResolveTokenOptions, resolveToken, type TokenSource } from "./auth.js";
 
 export interface GitHubClient {
   octokit: Octokit;
@@ -14,9 +14,7 @@ const USER_AGENT = "suitevitals";
  * resolution is delegated to {@link resolveToken}; everything downstream
  * shares this one authenticated client.
  */
-export async function createGitHubClient(
-  options: ResolveTokenOptions = {},
-): Promise<GitHubClient> {
+export async function createGitHubClient(options: ResolveTokenOptions = {}): Promise<GitHubClient> {
   const { token, source } = await resolveToken(options);
   const octokit = new Octokit({ auth: token, userAgent: USER_AGENT });
   return { octokit, tokenSource: source };

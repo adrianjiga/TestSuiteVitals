@@ -47,9 +47,7 @@ export interface ResolveTokenOptions {
  * resolution is pluggable, so `gh` users get zero-config auth without us
  * maintaining a second transport.
  */
-export async function resolveToken(
-  options: ResolveTokenOptions = {},
-): Promise<ResolvedToken> {
+export async function resolveToken(options: ResolveTokenOptions = {}): Promise<ResolvedToken> {
   const { token, env = process.env, runGhCli = defaultGhRunner } = options;
 
   const flag = token?.trim();
