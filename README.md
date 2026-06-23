@@ -20,6 +20,9 @@ npm install
 npm run dev -- collect --help   # run the CLI from source
 npm test                        # run the test suite
 npm run typecheck               # type-check without emitting
+npm run check                   # Biome: lint + format + autofix
+npm run lint                    # Biome: lint only
+npm run format                  # Biome: format only
 npm run build                   # compile to dist/
 ```
 
