@@ -9,6 +9,12 @@ normalizes the test-report artifacts into plain files you own.
 
 > **Status:** early development (M1 — walking skeleton). Not yet published to npm.
 
+## Documentation
+
+Architecture and design rationale live in [`docs/architecture/`](docs/architecture/overview.md):
+the [locked decisions](docs/architecture/decisions.md), the [event schema](docs/architecture/event-schema.md),
+and the [collector pipeline](docs/architecture/collector.md).
+
 ## Requirements
 
 - Node.js >= 24
