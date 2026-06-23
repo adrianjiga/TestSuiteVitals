@@ -43,6 +43,27 @@ token in this order:
 
 If none yields a token, it exits with a message listing all three options.
 
+## Usage
+
+```bash
+suitevitals collect --repo <owner/name> [options]
+```
+
+| Option | Description |
+| --- | --- |
+| `--repo <owner/name>` | Repository to collect from (required). |
+| `--token <token>` | GitHub token; overrides `GITHUB_TOKEN` and the `gh` CLI. |
+| `--hours-back <n>` | Backfill window in hours; overrides the stored watermark. |
+| `--state-file <path>` | Path to the state file (default `state.json`). |
+| `--dry-run` | Show what would be fetched without writing any data. |
+
+On the first run for a repo, collection defaults to the last 72 hours; afterwards it
+resumes from the stored watermark. Re-running is always safe — overlapping windows are
+de-duplicated.
+
+> **Status:** `collect` currently authenticates, lists workflow runs in the window, and
+> classifies them as completed or pending. Artifact fetching and event storage are in progress.
+
 ## License
 
 MIT © Adrian Jiga

@@ -53,6 +53,9 @@ silently.
 ## Implementation status
 
 The `collect` command currently authenticates (single Octokit transport, token chain per
-[D8](decisions.md#d8--auth-one-transport-pluggable-token-resolution)) and stops before run
-listing. Remaining M1 work: run listing with watermark + `pending_runs` → tier-1 artifact
-fetch → JUnit adapter → NDJSON append with dedup → summary.
+[D8](decisions.md#d8--auth-one-transport-pluggable-token-resolution)), loads state, computes
+the collection window (watermark / `--hours-back` / 72h default), lists workflow runs since
+that window, and classifies them into completed vs. pending. It stops before fetching
+artifacts, and does not yet advance the watermark (that happens only after a durable append,
+[D12](decisions.md#d12--crash-safety--idempotency)). Remaining M1 work: tier-1 artifact fetch
+→ JUnit adapter → NDJSON append with dedup → summary.
