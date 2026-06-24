@@ -55,6 +55,7 @@ suitevitals collect --repo <owner/name> [options]
 | `--token <token>` | GitHub token; overrides `GITHUB_TOKEN` and the `gh` CLI. |
 | `--hours-back <n>` | Backfill window in hours; overrides the stored watermark. |
 | `--state-file <path>` | Path to the state file (default `state.json`). |
+| `--data-dir <path>` | Directory for the NDJSON event partitions (default `data`). |
 | `--full-errors` | Store full error messages without redaction or truncation. |
 | `--dry-run` | Show what would be fetched without writing any data. |
 
@@ -62,10 +63,11 @@ On the first run for a repo, collection defaults to the last 72 hours; afterward
 resumes from the stored watermark. Re-running is always safe — overlapping windows are
 de-duplicated.
 
-> **Status:** `collect` currently authenticates, lists workflow runs in the window, classifies
-> them as completed or pending, downloads + extracts each completed run's report artifacts
-> (counting expired ones), and parses JUnit reports into normalized test events. Event storage
-> (NDJSON with dedup) is in progress; the Playwright and Mochawesome adapters land in M2.
+> **Status (M1 complete):** `collect` authenticates, lists workflow runs in the window,
+> downloads + extracts each completed run's report artifacts, parses JUnit reports into
+> normalized events, and appends them to monthly NDJSON partitions with dedup — running it
+> twice produces zero duplicates. Next (M2): Playwright and Mochawesome adapters, multi-repo
+> config, and concurrency.
 
 ## License
 

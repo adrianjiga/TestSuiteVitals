@@ -8,15 +8,18 @@ import {
   fetchReportArtifacts,
 } from "../artifacts/fetch.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
+import { nextWatermark } from "../collect/watermark.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
 import { downloadArtifactZip, listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
 import { parseRepoRef, type RepoRef, repoSlug } from "../github/repo.js";
 import { classifyRuns, listRunsSince } from "../github/runs.js";
-import { loadState, repoState } from "../state/state.js";
+import { loadState, repoState, saveState } from "../state/state.js";
+import { type AppendResult, appendEvents } from "../store/ndjson.js";
 
 const DEFAULT_STATE_PATH = "state.json";
+const DEFAULT_DATA_DIR = "data";
 
 export const collectCommand = defineCommand({
   meta: {
@@ -42,6 +45,11 @@ export const collectCommand = defineCommand({
       description: "Path to the state file",
       default: DEFAULT_STATE_PATH,
     },
+    "data-dir": {
+      type: "string",
+      description: "Directory for the NDJSON event partitions",
+      default: DEFAULT_DATA_DIR,
+    },
     "dry-run": {
       type: "boolean",
       description: "Show what would be fetched without writing any data",
@@ -65,8 +73,10 @@ export const collectCommand = defineCommand({
     }
     const { octokit } = client;
 
+    const now = new Date();
     const state = await loadState(args["state-file"]);
-    const window = computeWindow(repoState(state, slug), { hoursBack });
+    const previous = repoState(state, slug);
+    const window = computeWindow(previous, { hoursBack });
 
     console.log(`Listing runs for ${slug} since ${window.since.toISOString()} (${window.source}).`);
     if (window.source === "default") {
@@ -96,16 +106,25 @@ export const collectCommand = defineCommand({
       if (!dryRun) {
         const parsed = await parseRunReports(reports, slug, {
           fullErrors: args["full-errors"],
+          now,
         });
         printParseSummary(parsed.summary);
+
+        // Durable append first, then advance state — so a crash in between is
+        // recovered by re-collecting (dedup absorbs the overlap), never skipped (D12).
+        const append = await appendEvents(args["data-dir"], slug, parsed.events);
+        const watermark = nextWatermark(previous.watermark, completed, pending);
+        state.repos[slug] = {
+          watermark,
+          pending_runs: pending.map((run) => run.run_id),
+          last_collected_at: now.toISOString(),
+        };
+        await saveState(args["state-file"], state);
+        printAppendSummary(append, watermark);
       }
     } finally {
-      // Events aren't persisted yet; the NDJSON-append slice will. Clean up.
       await rm(workdir, { recursive: true, force: true });
     }
-
-    // M1 (next): append the parsed events to NDJSON with dedup, then advance the
-    // watermark (D12).
   },
 });
 
@@ -141,6 +160,13 @@ function printParseSummary(summary: ParseSummary): void {
   console.log(
     `  ${summary.eventsBuilt} test event(s): ${summary.passed} passed, ${summary.failed} failed, ${summary.skipped} skipped.`,
   );
+}
+
+function printAppendSummary(append: AppendResult, watermark: string | undefined): void {
+  console.log(
+    `Stored: wrote ${append.written} new event(s), ${append.deduped} duplicate(s) skipped across ${append.partitions} partition(s).`,
+  );
+  console.log(`  Watermark advanced to ${watermark ?? "(unset)"}.`);
 }
 
 /**
