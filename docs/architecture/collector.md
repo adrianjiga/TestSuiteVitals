@@ -61,6 +61,18 @@ artifact names/sizes, then download the report-glob matches and extract them int
 Expired artifacts are counted, never silently dropped. `--dry-run` lists and partitions
 without downloading. The tier-3 sniff fallback is deferred to M5.
 
-It does not yet parse the extracted reports or advance the watermark (that happens only after
-a durable append, [D12](decisions.md#d12--crash-safety--idempotency)). Remaining M1 work:
-JUnit adapter → NDJSON append with dedup → summary.
+The extracted reports are then dispatched to a matching adapter by content sniff and parsed
+into normalized events. The **JUnit adapter** is implemented (root `<testsuites>`/`<testsuite>`);
+non-JUnit XML (e.g. TestNG's `testng-results.xml`) is correctly skipped. Failure messages are
+redacted and truncated ([D6](decisions.md#d6--error-storage-redacted--truncated-by-default),
+bypassed by `--full-errors`) and fingerprinted from their normalized stack
+([D7](decisions.md#d7--failure-clustering-stack-frame-fingerprint)). Adapters emit a shared
+`ParsedTest` shape that a common builder enriches into a `TestEvent` with stable identity
+(`id = hash(file + title_path)`, [D5](decisions.md#d5--test-identity-hashfile--title_path)).
+Playwright JSON and Mochawesome adapters reuse this pipeline in M2.
+
+Events are not yet persisted and the watermark is not yet advanced (that happens only after a
+durable append, [D12](decisions.md#d12--crash-safety--idempotency)). Within a single run the
+same test can appear in multiple report files (e.g. Surefire's per-class `TEST-*.xml`); the
+`(run_id, run_attempt, id, matrix)` dedup in the append slice collapses these. Remaining M1
+work: NDJSON append with dedup → summary.
