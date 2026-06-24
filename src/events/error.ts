@@ -1,0 +1,94 @@
+import { createHash } from "node:crypto";
+import type { TestError } from "./event.js";
+
+/** Default truncation budget for error messages (D6). */
+export const DEFAULT_ERROR_LIMIT = 400;
+
+export interface RedactOptions {
+  /** Bypass both redaction and truncation (`--full-errors`). */
+  fullErrors?: boolean;
+  /** Truncation budget in characters; the first line is always kept whole. */
+  limit?: number;
+}
+
+/** Patterns for secrets that must never be stored (D6). */
+const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  // Known token shapes: GitHub PATs, OAuth, Slack, AWS access keys.
+  [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g, "[REDACTED]"],
+  [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[REDACTED]"],
+  [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED]"],
+  [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED]"],
+  // Bearer/Basic auth headers (covers the Authorization header case).
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/g, "$1 [REDACTED]"],
+  // key=value / key: value secrets.
+  [/\b(password|passwd|pwd|secret|token|api[_-]?key)\b(\s*[=:]\s*)\S+/gi, "$1$2[REDACTED]"],
+  // Query-string values (URLs often carry signed tokens).
+  [/([?&][^=\s&]+=)[^\s&]+/g, "$1[REDACTED]"],
+];
+
+/** Removes known secret shapes from text. */
+export function redactSecrets(text: string): string {
+  return SECRET_PATTERNS.reduce(
+    (acc, [pattern, replacement]) => acc.replace(pattern, replacement),
+    text,
+  );
+}
+
+/**
+ * Truncates over-long text (D6). When the text spans multiple lines, the whole first
+ * line is kept and the rest dropped — failure messages put the signal on line one and
+ * the bloat (HTML dumps, response bodies) on later lines. A single over-long line with
+ * no newline is hard-capped at `limit`.
+ */
+export function truncate(text: string, limit: number): string {
+  if (text.length <= limit) {
+    return text;
+  }
+  const newline = text.indexOf("\n");
+  const keep = newline === -1 ? limit : newline;
+  return `${text.slice(0, keep)} …[truncated]`;
+}
+
+/** Redacts then truncates a message, unless `fullErrors` bypasses both (D6). */
+export function redactError(message: string, options: RedactOptions = {}): string {
+  const { fullErrors = false, limit = DEFAULT_ERROR_LIMIT } = options;
+  if (fullErrors) {
+    return message;
+  }
+  return truncate(redactSecrets(message), limit);
+}
+
+/** Masks volatile detail (paths, line/col numbers, timestamps, addresses) from a stack. */
+export function normalizeStack(stack: string): string {
+  return stack
+    .replace(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "<TS>")
+    .replace(/0x[0-9a-fA-F]+/g, "<ADDR>")
+    .replace(/(?:[A-Za-z]:)?(?:[\\/][^\s:)]+)+/g, "<PATH>")
+    .replace(/:\d+(?::\d+)?/g, ":<N>")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Fingerprints a failure by hashing its normalized stack (D7). Two failures with
+ * the same shape but different paths/line numbers/timestamps share a fingerprint,
+ * which is what lets the tool say "these 14 failures are the same failure".
+ */
+export function fingerprint(stack: string): string {
+  return createHash("sha256").update(normalizeStack(stack)).digest("hex").slice(0, 12);
+}
+
+export interface RawError {
+  /** Short failure message (the `message` attribute / first line). */
+  message: string;
+  /** Detail/stack body used for fingerprinting; falls back to the message. */
+  stack?: string;
+}
+
+/** Builds a stored {@link TestError}: redacted message + stack fingerprint. */
+export function makeTestError(raw: RawError, options: RedactOptions = {}): TestError {
+  return {
+    message: redactError(raw.message, options),
+    fingerprint: fingerprint(raw.stack && raw.stack.trim().length > 0 ? raw.stack : raw.message),
+  };
+}
