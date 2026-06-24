@@ -7,6 +7,7 @@ import {
   type ArtifactFetchSummary,
   fetchReportArtifacts,
 } from "../artifacts/fetch.js";
+import { type ParseSummary, parseRunReports } from "../collect/parse.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
 import { downloadArtifactZip, listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
@@ -46,6 +47,11 @@ export const collectCommand = defineCommand({
       description: "Show what would be fetched without writing any data",
       default: false,
     },
+    "full-errors": {
+      type: "boolean",
+      description: "Store full error messages without redaction or truncation",
+      default: false,
+    },
   },
   async run({ args }) {
     const ref = parseRepoRef(args.repo);
@@ -76,22 +82,30 @@ export const collectCommand = defineCommand({
       `Found ${runs.length} run(s): ${completed.length} completed, ${pending.length} pending.`,
     );
 
+    const dryRun = args["dry-run"];
     const workdir = await mkdtemp(join(tmpdir(), "suitevitals-"));
     try {
-      const { summary } = await fetchReportArtifacts(
+      const { summary, reports } = await fetchReportArtifacts(
         makeArtifactFetcher(octokit, ref),
         completed,
         workdir,
-        { dryRun: args["dry-run"] },
+        { dryRun },
       );
-      printArtifactSummary(summary, args["dry-run"]);
+      printArtifactSummary(summary, dryRun);
+
+      if (!dryRun) {
+        const parsed = await parseRunReports(reports, slug, {
+          fullErrors: args["full-errors"],
+        });
+        printParseSummary(parsed.summary);
+      }
     } finally {
-      // Nothing consumes the extracted files yet; the adapter slice will. Clean up.
+      // Events aren't persisted yet; the NDJSON-append slice will. Clean up.
       await rm(workdir, { recursive: true, force: true });
     }
 
-    // M1 (next): dispatch the JUnit adapter over the extracted reports, append
-    // NDJSON events with dedup, then advance the watermark (D12).
+    // M1 (next): append the parsed events to NDJSON with dedup, then advance the
+    // watermark (D12).
   },
 });
 
@@ -120,6 +134,13 @@ function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean): v
   if (summary.skippedArtifacts > 0) {
     console.log(`  ${summary.skippedArtifacts} non-report artifact(s) skipped.`);
   }
+}
+
+function printParseSummary(summary: ParseSummary): void {
+  console.log(`Reports: parsed ${summary.filesParsed}/${summary.filesScanned} candidate file(s).`);
+  console.log(
+    `  ${summary.eventsBuilt} test event(s): ${summary.passed} passed, ${summary.failed} failed, ${summary.skipped} skipped.`,
+  );
 }
 
 /**
