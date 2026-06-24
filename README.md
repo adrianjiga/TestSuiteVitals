@@ -55,6 +55,7 @@ suitevitals collect --repo <owner/name> [options]
 | `--token <token>` | GitHub token; overrides `GITHUB_TOKEN` and the `gh` CLI. |
 | `--hours-back <n>` | Backfill window in hours; overrides the stored watermark. |
 | `--state-file <path>` | Path to the state file (default `state.json`). |
+| `--full-errors` | Store full error messages without redaction or truncation. |
 | `--dry-run` | Show what would be fetched without writing any data. |
 
 On the first run for a repo, collection defaults to the last 72 hours; afterwards it
@@ -62,8 +63,9 @@ resumes from the stored watermark. Re-running is always safe — overlapping win
 de-duplicated.
 
 > **Status:** `collect` currently authenticates, lists workflow runs in the window, classifies
-> them as completed or pending, and downloads + extracts each completed run's report artifacts
-> (counting expired ones). Report parsing and event storage are in progress.
+> them as completed or pending, downloads + extracts each completed run's report artifacts
+> (counting expired ones), and parses JUnit reports into normalized test events. Event storage
+> (NDJSON with dedup) is in progress; the Playwright and Mochawesome adapters land in M2.
 
 ## License
 

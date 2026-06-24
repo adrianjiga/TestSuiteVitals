@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+import { looksLikeJUnit, parseJUnit } from "../src/adapters/junit.js";
+
+const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="Web Tables" file="tests/webTables.spec.ts">
+    <testcase classname="tests/webTables.spec.ts" name="adds a record" time="1.5"/>
+    <testcase classname="tests/webTables.spec.ts" name="deletes a record" time="2.0">
+      <failure message="Timed out waiting for selector">at fn (/ci/app.ts:10:5)</failure>
+    </testcase>
+    <testcase classname="tests/webTables.spec.ts" name="skipped one" time="0">
+      <skipped/>
+    </testcase>
+  </testsuite>
+</testsuites>`;
+
+describe("looksLikeJUnit", () => {
+  it("detects testsuites and testsuite roots", () => {
+    expect(looksLikeJUnit(SAMPLE)).toBe(true);
+    expect(looksLikeJUnit('<testsuite name="x"/>')).toBe(true);
+  });
+
+  it("rejects non-JUnit content", () => {
+    expect(looksLikeJUnit('{"stats":{}}')).toBe(false);
+  });
+});
+
+describe("parseJUnit", () => {
+  it("parses passed, failed, and skipped testcases", () => {
+    const tests = parseJUnit(SAMPLE);
+    expect(tests.map((t) => t.status)).toEqual(["passed", "failed", "skipped"]);
+  });
+
+  it("maps time to milliseconds and derives file/title", () => {
+    const [first] = parseJUnit(SAMPLE);
+    expect(first?.file).toBe("tests/webTables.spec.ts");
+    expect(first?.title_path).toEqual(["adds a record"]);
+    expect(first?.duration_ms).toBe(1500);
+    expect(first?.attempts).toHaveLength(1);
+  });
+
+  it("attaches a redacted, fingerprinted error to failures", () => {
+    const failed = parseJUnit(SAMPLE)[1];
+    expect(failed?.attempts[0]?.error?.message).toBe("Timed out waiting for selector");
+    expect(failed?.attempts[0]?.error?.fingerprint).toMatch(/^[0-9a-f]{12}$/);
+  });
+
+  it("handles a single <testsuite> root", () => {
+    const xml = '<testsuite name="s"><testcase name="t" time="0.5"/></testsuite>';
+    const tests = parseJUnit(xml);
+    expect(tests).toHaveLength(1);
+    expect(tests[0]?.duration_ms).toBe(500);
+  });
+});
