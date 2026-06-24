@@ -71,8 +71,15 @@ bypassed by `--full-errors`) and fingerprinted from their normalized stack
 (`id = hash(file + title_path)`, [D5](decisions.md#d5--test-identity-hashfile--title_path)).
 Playwright JSON and Mochawesome adapters reuse this pipeline in M2.
 
-Events are not yet persisted and the watermark is not yet advanced (that happens only after a
-durable append, [D12](decisions.md#d12--crash-safety--idempotency)). Within a single run the
-same test can appear in multiple report files (e.g. Surefire's per-class `TEST-*.xml`); the
-`(run_id, run_attempt, id, matrix)` dedup in the append slice collapses these. Remaining M1
-work: NDJSON append with dedup → summary.
+Events are then appended to monthly NDJSON partitions
+(`data/<owner>__<repo>/<YYYY-MM>.ndjson`, [D1](decisions.md#d1--source-of-truth-partitioned-ndjson)),
+partitioned by the run's month so backfills land correctly. Append is dedup-guarded by the
+`(run_id, run_attempt, id, matrix)` key ([D12](decisions.md#d12--crash-safety--idempotency)),
+which both collapses within-run duplicates (e.g. Surefire's per-class `TEST-*.xml`) and makes
+re-collection a no-op. The watermark advances **only after** the durable append, and never past
+an in-progress run; in-progress/queued runs are also tracked by id in `pending_runs` for explicit
+re-check. `--dry-run` skips all writes.
+
+This completes the **M1 walking skeleton**: `collect` is idempotent end-to-end — running it twice
+produces the same data with zero duplicates. Next (M2): Playwright JSON and Mochawesome adapters,
+multi-repo config, `p-limit` concurrency, and rate-limit backoff.
