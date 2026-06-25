@@ -1,7 +1,11 @@
 import { join } from "node:path";
+import pLimit from "p-limit";
 import { type ArtifactMeta, partitionArtifacts } from "../github/artifacts.js";
 import type { WorkflowRun } from "../github/runs.js";
 import { extractZipNested } from "./extract.js";
+
+/** Default number of runs fetched in parallel; balances throughput against rate limits. */
+export const DEFAULT_CONCURRENCY = 5;
 
 /** The two artifact operations the fetcher needs; injectable so the orchestration is testable. */
 export interface ArtifactFetcher {
@@ -35,6 +39,18 @@ export interface ArtifactFetchOptions {
   dryRun?: boolean;
   /** Called after each run is processed, for live progress (done of total). */
   onProgress?: (done: number, total: number) => void;
+  /** Max runs fetched in parallel. Defaults to {@link DEFAULT_CONCURRENCY}. */
+  concurrency?: number;
+}
+
+/** What one run contributed, computed in isolation so runs can be fetched in parallel. */
+interface RunOutcome {
+  run: WorkflowRun;
+  artifactsSeen: number;
+  reportArtifacts: number;
+  expiredArtifacts: number;
+  skippedArtifacts: number;
+  files: string[];
 }
 
 function emptySummary(): ArtifactFetchSummary {
@@ -52,8 +68,13 @@ function emptySummary(): ArtifactFetchSummary {
 /**
  * For each run: list artifacts (D9 tier 1), partition them, download the report-glob
  * matches (tier 2), and extract each into `workdir/<run_id>/<artifact_id>/`. Expired
- * artifacts are counted, never silently dropped. Runs sequentially; concurrency is
- * deferred to M2.
+ * artifacts are counted, never silently dropped.
+ *
+ * Runs are fetched up to `concurrency` at a time (p-limit), since a backfill is dozens
+ * of independent, network-bound runs — the transport (client.ts) absorbs any rate-limit
+ * pushback with backoff. Each run is processed into an isolated {@link RunOutcome} so the
+ * parallel tasks never race on shared state; outcomes are then folded together in input
+ * order, keeping the summary and `reports[]` deterministic regardless of finish order.
  */
 export async function fetchReportArtifacts(
   fetcher: ArtifactFetcher,
@@ -61,39 +82,70 @@ export async function fetchReportArtifacts(
   workdir: string,
   options: ArtifactFetchOptions = {},
 ): Promise<ArtifactFetchResult> {
-  const { dryRun = false, onProgress } = options;
-  const summary = emptySummary();
-  const reports: RunReports[] = [];
+  const { dryRun = false, onProgress, concurrency = DEFAULT_CONCURRENCY } = options;
+  const limit = pLimit(Math.max(1, concurrency));
 
-  for (const run of runs) {
-    summary.runsScanned++;
-    onProgress?.(summary.runsScanned, runs.length);
+  let completed = 0;
+  const outcomes = await Promise.all(
+    runs.map((run) =>
+      limit(async () => {
+        const outcome = await fetchRun(fetcher, run, workdir, dryRun);
+        completed++;
+        onProgress?.(completed, runs.length);
+        return outcome;
+      }),
+    ),
+  );
 
-    const artifacts = await fetcher.list(run.run_id);
-    summary.artifactsSeen += artifacts.length;
+  return foldOutcomes(outcomes);
+}
 
-    const partition = partitionArtifacts(artifacts);
-    summary.reportArtifacts += partition.reports.length;
-    summary.expiredArtifacts += partition.expired.length;
-    summary.skippedArtifacts += partition.skipped.length;
-    if (partition.expired.length > 0) {
-      summary.runsWithExpired++;
-    }
+/** Fetches and extracts one run's report artifacts in isolation (no shared state). */
+async function fetchRun(
+  fetcher: ArtifactFetcher,
+  run: WorkflowRun,
+  workdir: string,
+  dryRun: boolean,
+): Promise<RunOutcome> {
+  const artifacts = await fetcher.list(run.run_id);
+  const partition = partitionArtifacts(artifacts);
 
-    if (dryRun) {
-      continue;
-    }
-
-    const files: string[] = [];
+  const files: string[] = [];
+  if (!dryRun) {
     for (const artifact of partition.reports) {
       const zip = await fetcher.download(artifact.id);
       const dest = join(workdir, String(run.run_id), String(artifact.id));
       files.push(...(await extractZipNested(zip, dest)));
     }
+  }
 
-    summary.filesExtracted += files.length;
-    if (files.length > 0) {
-      reports.push({ run, files });
+  return {
+    run,
+    artifactsSeen: artifacts.length,
+    reportArtifacts: partition.reports.length,
+    expiredArtifacts: partition.expired.length,
+    skippedArtifacts: partition.skipped.length,
+    files,
+  };
+}
+
+/** Folds per-run outcomes into one summary + report list, in input order. */
+function foldOutcomes(outcomes: RunOutcome[]): ArtifactFetchResult {
+  const summary = emptySummary();
+  const reports: RunReports[] = [];
+
+  for (const outcome of outcomes) {
+    summary.runsScanned++;
+    summary.artifactsSeen += outcome.artifactsSeen;
+    summary.reportArtifacts += outcome.reportArtifacts;
+    summary.expiredArtifacts += outcome.expiredArtifacts;
+    summary.skippedArtifacts += outcome.skippedArtifacts;
+    if (outcome.expiredArtifacts > 0) {
+      summary.runsWithExpired++;
+    }
+    summary.filesExtracted += outcome.files.length;
+    if (outcome.files.length > 0) {
+      reports.push({ run: outcome.run, files: outcome.files });
     }
   }
 

@@ -5,6 +5,7 @@ import { defineCommand } from "citty";
 import {
   type ArtifactFetcher,
   type ArtifactFetchSummary,
+  DEFAULT_CONCURRENCY,
   fetchReportArtifacts,
 } from "../artifacts/fetch.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
@@ -60,12 +61,17 @@ export const collectCommand = defineCommand({
       description: "Store full error messages without redaction or truncation",
       default: false,
     },
+    concurrency: {
+      type: "string",
+      description: `Number of runs to fetch in parallel (default ${DEFAULT_CONCURRENCY})`,
+    },
   },
   async run({ args }) {
     const ref = parseRepoRef(args.repo);
     const slug = repoSlug(ref);
 
     const hoursBack = parseHoursBack(args["hours-back"]);
+    const concurrency = parseConcurrency(args.concurrency);
 
     const client = await authenticate(args.token);
     if (!client) {
@@ -99,7 +105,7 @@ export const collectCommand = defineCommand({
         makeArtifactFetcher(octokit, ref),
         completed,
         workdir,
-        { dryRun, onProgress: reportProgress },
+        { dryRun, onProgress: reportProgress, concurrency },
       );
       printArtifactSummary(summary, dryRun);
 
@@ -215,4 +221,16 @@ function parseHoursBack(value: string | undefined): number | undefined {
     throw new Error(`Invalid --hours-back "${value}": expected a positive number.`);
   }
   return hours;
+}
+
+/** Parses and validates `--concurrency`; returns undefined to use the default. */
+function parseConcurrency(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`Invalid --concurrency "${value}": expected a positive integer.`);
+  }
+  return n;
 }

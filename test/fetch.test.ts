@@ -88,6 +88,50 @@ describe("fetchReportArtifacts", () => {
     expect(summary.filesExtracted).toBe(2);
   });
 
+  it("never runs more than `concurrency` listings in flight at once", async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        inFlight--;
+        return [];
+      }),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const runs = Array.from({ length: 8 }, (_, i) => run(i + 1));
+    await fetchReportArtifacts(fetcher, runs, workdir, { concurrency: 3 });
+
+    expect(peak).toBe(3);
+    expect(fetcher.list).toHaveBeenCalledTimes(8);
+  });
+
+  it("folds results in input order even when downloads finish out of order", async () => {
+    // Each run's sole artifact id == its run id. Run 1's download is the slowest, so it
+    // finishes last — yet the reports array must still be ordered by the input runs.
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async (runId: number) => [artifact(runId, "report")]),
+      download: vi.fn(async (id: number) => {
+        await new Promise((resolve) => setTimeout(resolve, (4 - id) * 10));
+        return reportZip;
+      }),
+    };
+
+    const { reports, summary } = await fetchReportArtifacts(
+      fetcher,
+      [run(1), run(2), run(3)],
+      workdir,
+      { concurrency: 3 },
+    );
+
+    expect(reports.map((r) => r.run.run_id)).toEqual([1, 2, 3]);
+    expect(summary.runsScanned).toBe(3);
+    expect(summary.filesExtracted).toBe(3);
+  });
+
   it("reports progress once per run", async () => {
     const fetcher: ArtifactFetcher = {
       list: vi.fn(async () => []),
