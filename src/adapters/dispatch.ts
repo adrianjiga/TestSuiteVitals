@@ -1,6 +1,7 @@
 import type { RedactOptions } from "../events/error.js";
 import type { ParsedTest } from "../events/event.js";
 import { JUNIT_FRAMEWORK, looksLikeJUnit, parseJUnit } from "./junit.js";
+import { looksLikeMochawesome, MOCHAWESOME_FRAMEWORK, parseMochawesome } from "./mochawesome.js";
 import {
   looksLikePlaywrightBlob,
   PLAYWRIGHT_FRAMEWORK,
@@ -14,8 +15,7 @@ export interface DetectedReport {
 
 /**
  * Sniffs report content and parses it with the matching adapter, or returns null if no
- * adapter recognizes it. Each adapter emits the same `ParsedTest` shape; Mochawesome is
- * added next in M2.
+ * adapter recognizes it. Each adapter emits the same `ParsedTest` shape.
  */
 export function detectAndParse(
   content: string,
@@ -26,6 +26,9 @@ export function detectAndParse(
   }
   if (looksLikePlaywrightBlob(content)) {
     return { framework: PLAYWRIGHT_FRAMEWORK, tests: parsePlaywrightBlob(content, options) };
+  }
+  if (looksLikeMochawesome(content)) {
+    return { framework: MOCHAWESOME_FRAMEWORK, tests: parseMochawesome(content, options) };
   }
   return null;
 }
