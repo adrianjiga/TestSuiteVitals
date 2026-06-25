@@ -34,10 +34,13 @@
     "check": "biome check --write ."
   },
   "dependencies": {
+    "@octokit/plugin-retry": "^8.1.0",
+    "@octokit/plugin-throttling": "^11.0.3",
     "@octokit/rest": "^22.0.1",
     "citty": "^0.2.2",
     "fast-xml-parser": "^5.9.3",
-    "fflate": "^0.8.3"
+    "fflate": "^0.8.3",
+    "p-limit": "^7.3.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.1",
