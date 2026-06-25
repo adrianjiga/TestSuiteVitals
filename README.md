@@ -56,6 +56,7 @@ suitevitals collect --repo <owner/name> [options]
 | `--hours-back <n>` | Backfill window in hours; overrides the stored watermark. |
 | `--state-file <path>` | Path to the state file (default `state.json`). |
 | `--data-dir <path>` | Directory for the NDJSON event partitions (default `data`). |
+| `--concurrency <n>` | Number of runs to fetch in parallel (default 5). |
 | `--full-errors` | Store full error messages without redaction or truncation. |
 | `--dry-run` | Show what would be fetched without writing any data. |
 
@@ -64,10 +65,11 @@ resumes from the stored watermark. Re-running is always safe — overlapping win
 de-duplicated.
 
 > **Status (M2 in progress):** `collect` authenticates, lists workflow runs, downloads +
-> extracts report artifacts (with live progress), parses **JUnit** and **Playwright blob**
-> reports into normalized events — including per-retry `attempts[]` and the matrix dimension —
-> and appends them to monthly NDJSON partitions with dedup (running it twice produces zero
-> duplicates). Next: Mochawesome adapter, multi-repo config, and concurrency.
+> extracts report artifacts **in parallel** (`--concurrency`, with live progress and
+> transport-level rate-limit backoff), parses **JUnit** and **Playwright blob** reports into
+> normalized events — including per-retry `attempts[]` and the matrix dimension — and appends
+> them to monthly NDJSON partitions with dedup (running it twice produces zero duplicates).
+> Next: Mochawesome adapter and multi-repo config.
 
 ## License
 
