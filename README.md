@@ -63,11 +63,11 @@ On the first run for a repo, collection defaults to the last 72 hours; afterward
 resumes from the stored watermark. Re-running is always safe — overlapping windows are
 de-duplicated.
 
-> **Status (M1 complete):** `collect` authenticates, lists workflow runs in the window,
-> downloads + extracts each completed run's report artifacts, parses JUnit reports into
-> normalized events, and appends them to monthly NDJSON partitions with dedup — running it
-> twice produces zero duplicates. Next (M2): Playwright and Mochawesome adapters, multi-repo
-> config, and concurrency.
+> **Status (M2 in progress):** `collect` authenticates, lists workflow runs, downloads +
+> extracts report artifacts (with live progress), parses **JUnit** and **Playwright blob**
+> reports into normalized events — including per-retry `attempts[]` and the matrix dimension —
+> and appends them to monthly NDJSON partitions with dedup (running it twice produces zero
+> duplicates). Next: Mochawesome adapter, multi-repo config, and concurrency.
 
 ## License
 
