@@ -61,15 +61,28 @@ artifact names/sizes, then download the report-glob matches and extract them int
 Expired artifacts are counted, never silently dropped. `--dry-run` lists and partitions
 without downloading. The tier-3 sniff fallback is deferred to M5.
 
-The extracted reports are then dispatched to a matching adapter by content sniff and parsed
-into normalized events. The **JUnit adapter** is implemented (root `<testsuites>`/`<testsuite>`);
-non-JUnit XML (e.g. TestNG's `testng-results.xml`) is correctly skipped. Failure messages are
-redacted and truncated ([D6](decisions.md#d6--error-storage-redacted--truncated-by-default),
-bypassed by `--full-errors`) and fingerprinted from their normalized stack
+Blob artifacts are double-zipped (the artifact zip holds `report-*.zip` which holds the report),
+so extraction recurses one nested level to surface the inner file. During the sequential fetch,
+`collect` prints live progress (`Fetching artifacts: n/total run(s)…`) so long backfills never
+look hung; `p-limit` concurrency to speed this up is a later M2 slice.
+
+The extracted reports are then dispatched to a matching adapter by content sniff and parsed into
+normalized events. Implemented adapters:
+
+- **JUnit** (`<testsuites>`/`<testsuite>` root) — flat, one attempt per test; non-JUnit XML
+  (e.g. TestNG's `testng-results.xml`) is skipped.
+- **Playwright blob** (`report.jsonl` teleReporter stream) — builds the suite tree from
+  `onProject`/`onBegin`, groups `onTestEnd` retries into `attempts[]`, and derives the **matrix**
+  from the project name. This is what sharded Playwright CI uploads.
+
+Failure messages are redacted and truncated
+([D6](decisions.md#d6--error-storage-redacted--truncated-by-default), bypassed by `--full-errors`)
+and fingerprinted from their normalized stack
 ([D7](decisions.md#d7--failure-clustering-stack-frame-fingerprint)). Adapters emit a shared
 `ParsedTest` shape that a common builder enriches into a `TestEvent` with stable identity
-(`id = hash(file + title_path)`, [D5](decisions.md#d5--test-identity-hashfile--title_path)).
-Playwright JSON and Mochawesome adapters reuse this pipeline in M2.
+(`id = hash(file + title_path)`, [D5](decisions.md#d5--test-identity-hashfile--title_path)). An
+adapter may set a per-test `matrix` (Playwright's project); adapters without matrix info (JUnit)
+fall back to the collect-level default. The Mochawesome adapter reuses this pipeline next.
 
 Events are then appended to monthly NDJSON partitions
 (`data/<owner>__<repo>/<YYYY-MM>.ndjson`, [D1](decisions.md#d1--source-of-truth-partitioned-ndjson)),
@@ -80,6 +93,6 @@ re-collection a no-op. The watermark advances **only after** the durable append,
 an in-progress run; in-progress/queued runs are also tracked by id in `pending_runs` for explicit
 re-check. `--dry-run` skips all writes.
 
-This completes the **M1 walking skeleton**: `collect` is idempotent end-to-end — running it twice
-produces the same data with zero duplicates. Next (M2): Playwright JSON and Mochawesome adapters,
-multi-repo config, `p-limit` concurrency, and rate-limit backoff.
+The **M1 walking skeleton** is complete (idempotent end-to-end). **M2** is in progress: the
+Playwright blob adapter and live fetch progress have landed; remaining M2 work is the Mochawesome
+adapter, multi-repo config, `p-limit` concurrency, and rate-limit backoff.
