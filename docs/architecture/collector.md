@@ -35,9 +35,10 @@ silently.
    `config` + `suites` → Playwright; JSON with `stats` + `results` → Mochawesome. A per-repo
    config override wins over sniffing.
 6. **Normalize & append** events with dedup; update state only after the append succeeds.
-7. **Concurrency & rate limits** — one `p-limit` pool (default 5) for all API calls and
-   downloads; watch `x-ratelimit-remaining` with a buffer; on 403/429 honor `Retry-After`,
-   else exponential backoff with jitter.
+7. **Concurrency & rate limits** — one `p-limit` pool (default 5, `--concurrency`) fetches runs
+   in parallel. Backoff is handled at the transport by GitHub's official `@octokit/plugin-throttling`
+   (honors primary/secondary rate-limit headers and `Retry-After`, waits then retries up to 3×) and
+   `@octokit/plugin-retry` (transient 5xx/network), so it covers every API call, not just downloads.
 8. **Summary** — runs scanned / collected / deduped / pending / expired, oversized-artifact
    skips, events written, elapsed, rate-limit remaining.
 
@@ -62,9 +63,14 @@ Expired artifacts are counted, never silently dropped. `--dry-run` lists and par
 without downloading. The tier-3 sniff fallback is deferred to M5.
 
 Blob artifacts are double-zipped (the artifact zip holds `report-*.zip` which holds the report),
-so extraction recurses one nested level to surface the inner file. During the sequential fetch,
-`collect` prints live progress (`Fetching artifacts: n/total run(s)…`) so long backfills never
-look hung; `p-limit` concurrency to speed this up is a later M2 slice.
+so extraction recurses one nested level to surface the inner file. Runs are fetched in parallel
+up to `--concurrency` (a `p-limit` pool, default 5), and `collect` prints live progress
+(`Fetching artifacts: n/total run(s)…`) so long backfills never look hung. Each run is processed
+into an isolated outcome and the outcomes are folded back in input order, so the summary and the
+parsed-event order stay deterministic regardless of which download finishes first. The transport
+(`client.ts`) hardens every API call with GitHub's official `throttling` (obeys primary/secondary
+rate-limit headers, waits then retries) and `retry` (transient 5xx/network) plugins, so concurrency
+never turns into rate-limit failures.
 
 The extracted reports are then dispatched to a matching adapter by content sniff and parsed into
 normalized events. Implemented adapters:
@@ -94,5 +100,5 @@ an in-progress run; in-progress/queued runs are also tracked by id in `pending_r
 re-check. `--dry-run` skips all writes.
 
 The **M1 walking skeleton** is complete (idempotent end-to-end). **M2** is in progress: the
-Playwright blob adapter and live fetch progress have landed; remaining M2 work is the Mochawesome
-adapter, multi-repo config, `p-limit` concurrency, and rate-limit backoff.
+Playwright blob adapter, live fetch progress, `p-limit` concurrency, and transport-level rate-limit
+backoff have landed; remaining M2 work is the Mochawesome adapter and multi-repo config.
