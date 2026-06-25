@@ -99,7 +99,7 @@ export const collectCommand = defineCommand({
         makeArtifactFetcher(octokit, ref),
         completed,
         workdir,
-        { dryRun },
+        { dryRun, onProgress: reportProgress },
       );
       printArtifactSummary(summary, dryRun);
 
@@ -134,6 +134,22 @@ function makeArtifactFetcher(octokit: GitHubClient["octokit"], ref: RepoRef): Ar
     list: (runId) => listRunArtifacts(octokit, ref, runId),
     download: (artifactId) => downloadArtifactZip(octokit, ref, artifactId),
   };
+}
+
+/**
+ * Live progress for the sequential fetch loop. On a TTY it rewrites a single line; on
+ * a non-TTY (CI, redirected output) it prints periodic milestones instead of spamming.
+ */
+function reportProgress(done: number, total: number): void {
+  const line = `  Fetching artifacts: ${done}/${total} run(s)…`;
+  if (process.stderr.isTTY) {
+    process.stderr.write(`\r${line}`);
+    if (done === total) {
+      process.stderr.write("\n");
+    }
+  } else if (done === total || done === 1 || done % 10 === 0) {
+    process.stderr.write(`${line}\n`);
+  }
 }
 
 function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean): void {

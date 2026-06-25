@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { type ArtifactMeta, partitionArtifacts } from "../github/artifacts.js";
 import type { WorkflowRun } from "../github/runs.js";
-import { extractZip } from "./extract.js";
+import { extractZipNested } from "./extract.js";
 
 /** The two artifact operations the fetcher needs; injectable so the orchestration is testable. */
 export interface ArtifactFetcher {
@@ -33,6 +33,8 @@ export interface ArtifactFetchResult {
 export interface ArtifactFetchOptions {
   /** List and partition artifacts to report what would be fetched, but download nothing. */
   dryRun?: boolean;
+  /** Called after each run is processed, for live progress (done of total). */
+  onProgress?: (done: number, total: number) => void;
 }
 
 function emptySummary(): ArtifactFetchSummary {
@@ -59,12 +61,13 @@ export async function fetchReportArtifacts(
   workdir: string,
   options: ArtifactFetchOptions = {},
 ): Promise<ArtifactFetchResult> {
-  const { dryRun = false } = options;
+  const { dryRun = false, onProgress } = options;
   const summary = emptySummary();
   const reports: RunReports[] = [];
 
   for (const run of runs) {
     summary.runsScanned++;
+    onProgress?.(summary.runsScanned, runs.length);
 
     const artifacts = await fetcher.list(run.run_id);
     summary.artifactsSeen += artifacts.length;
@@ -85,7 +88,7 @@ export async function fetchReportArtifacts(
     for (const artifact of partition.reports) {
       const zip = await fetcher.download(artifact.id);
       const dest = join(workdir, String(run.run_id), String(artifact.id));
-      files.push(...(await extractZip(zip, dest)));
+      files.push(...(await extractZipNested(zip, dest)));
     }
 
     summary.filesExtracted += files.length;

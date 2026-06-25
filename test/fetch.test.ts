@@ -87,4 +87,20 @@ describe("fetchReportArtifacts", () => {
     expect(summary.runsScanned).toBe(2);
     expect(summary.filesExtracted).toBe(2);
   });
+
+  it("reports progress once per run", async () => {
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async () => []),
+      download: vi.fn(async () => reportZip),
+    };
+    const onProgress = vi.fn();
+
+    await fetchReportArtifacts(fetcher, [run(1), run(2), run(3)], workdir, { onProgress });
+
+    expect(onProgress.mock.calls).toEqual([
+      [1, 3],
+      [2, 3],
+      [3, 3],
+    ]);
+  });
 });
