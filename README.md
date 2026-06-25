@@ -66,10 +66,10 @@ de-duplicated.
 
 > **Status (M2 in progress):** `collect` authenticates, lists workflow runs, downloads +
 > extracts report artifacts **in parallel** (`--concurrency`, with live progress and
-> transport-level rate-limit backoff), parses **JUnit** and **Playwright blob** reports into
-> normalized events — including per-retry `attempts[]` and the matrix dimension — and appends
-> them to monthly NDJSON partitions with dedup (running it twice produces zero duplicates).
-> Next: Mochawesome adapter and multi-repo config.
+> transport-level rate-limit backoff), parses **JUnit**, **Playwright blob**, and
+> **mochawesome** (Cypress/Mocha) reports into normalized events — including per-retry
+> `attempts[]` and the matrix dimension — and appends them to monthly NDJSON partitions with
+> dedup (running it twice produces zero duplicates). Next: multi-repo config.
 
 ## License
 
