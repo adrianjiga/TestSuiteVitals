@@ -5,8 +5,8 @@ import type { RunReports } from "../artifacts/fetch.js";
 import { buildEvent, type RunContext, type TestEvent } from "../events/event.js";
 import type { WorkflowRun } from "../github/runs.js";
 
-/** Extensions worth reading as report candidates. JUnit only for now; broadened in M2. */
-const CANDIDATE_EXTENSIONS = new Set([".xml"]);
+/** Extensions worth reading as report candidates: JUnit XML, Playwright blob JSONL. */
+const CANDIDATE_EXTENSIONS = new Set([".xml", ".jsonl"]);
 
 export interface ParseSummary {
   filesScanned: number;
