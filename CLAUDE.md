@@ -53,7 +53,13 @@ and advance the watermark (`src/collect/watermark.ts`). Adapters: **JUnit** (`sr
 — suite tree + per-retry `attempts[]` + matrix from project name), and **Mochawesome**
 (`src/adapters/mochawesome.ts`, Cypress/Mocha `stats`+`results` JSON — recursive suite walk, flat
 one-attempt-per-test like JUnit, no matrix). All emit the same `ParsedTest` shape + `buildEvent`.
-M1 is complete; M2 in progress.
+
+A single `collect` run can target several repos: repeatable `--repo`, a `--config` JSON file, or
+both (`src/collect/config.ts` parses/validates and `resolveTargets` merges them most-specific-wins:
+per-repo override → CLI flag → config default → built-in, de-duping repos named twice). The repos
+share one client/state-file/data-dir and run sequentially via `collectRepo`; state is keyed per
+repo and saved after each, so a crash mid-loop keeps the repos already collected. M1 and M2 are
+complete.
 
 Idempotency contract (D12): `collect` appends durably *first*, then advances the watermark and
 saves state — so a crash between is recovered by re-collecting (the `(run_id, run_attempt, id,
