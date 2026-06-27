@@ -1,0 +1,86 @@
+import { describe, expect, it } from "vitest";
+import { parseConfig, resolveTargets } from "../src/collect/config.js";
+
+describe("parseConfig", () => {
+  it("parses defaults and a mixed list of string and object entries", () => {
+    const config = parseConfig(
+      JSON.stringify({
+        hoursBack: 72,
+        concurrency: 5,
+        repos: ["owner/a", { repo: "owner/b", hoursBack: 168, concurrency: 2 }],
+      }),
+    );
+    expect(config.hoursBack).toBe(72);
+    expect(config.concurrency).toBe(5);
+    expect(config.repos).toEqual(["owner/a", { repo: "owner/b", hoursBack: 168, concurrency: 2 }]);
+  });
+
+  it("rejects malformed JSON, non-objects, and a non-array repos field", () => {
+    expect(() => parseConfig("{not json")).toThrow(/not valid JSON/);
+    expect(() => parseConfig("[]")).toThrow(/expected a JSON object/);
+    expect(() => parseConfig('{"repos":{}}')).toThrow(/"repos" must be an array/);
+  });
+
+  it("rejects an entry without a repo and bad override values", () => {
+    expect(() => parseConfig('{"repos":[{"hoursBack":1}]}')).toThrow(/expected "owner\/name"/);
+    expect(() => parseConfig('{"repos":[{"repo":"o/r","hoursBack":0}]}')).toThrow(
+      /hoursBack: expected a positive number/,
+    );
+    expect(() => parseConfig('{"repos":[{"repo":"o/r","concurrency":1.5}]}')).toThrow(
+      /concurrency: expected a positive integer/,
+    );
+    expect(() => parseConfig('{"repos":[],"hoursBack":-3}')).toThrow(/expected a positive number/);
+  });
+});
+
+describe("resolveTargets", () => {
+  const base = { cliRepos: [] as string[], defaultConcurrency: 5 };
+
+  it("applies most-specific-wins precedence per field", () => {
+    const targets = resolveTargets({
+      ...base,
+      cliHoursBack: 24,
+      config: {
+        hoursBack: 100,
+        concurrency: 8,
+        repos: [{ repo: "owner/override", hoursBack: 168 }, "owner/inherits"],
+      },
+    });
+
+    const override = targets.find((t) => t.slug === "owner/override");
+    const inherits = targets.find((t) => t.slug === "owner/inherits");
+    // per-repo config beats the CLI flag…
+    expect(override?.hoursBack).toBe(168);
+    // …and a repo with no per-repo value falls through to the CLI flag.
+    expect(inherits?.hoursBack).toBe(24);
+    // concurrency has no CLI/per-repo value, so the config-level default wins over the built-in.
+    expect(inherits?.concurrency).toBe(8);
+  });
+
+  it("falls back to the built-in concurrency when nothing sets it", () => {
+    const [target] = resolveTargets({ ...base, cliRepos: ["owner/a"] });
+    expect(target?.concurrency).toBe(5);
+    expect(target?.hoursBack).toBeUndefined();
+  });
+
+  it("de-duplicates a repo named in both config and CLI, keeping the config entry", () => {
+    const targets = resolveTargets({
+      ...base,
+      cliRepos: ["owner/dup", "owner/cli-only"],
+      config: { repos: [{ repo: "owner/dup", concurrency: 2 }, "owner/config-only"] },
+    });
+
+    expect(targets.map((t) => t.slug)).toEqual([
+      "owner/dup",
+      "owner/config-only",
+      "owner/cli-only",
+    ]);
+    // the surviving entry is the config one, so its per-repo override stands.
+    expect(targets.find((t) => t.slug === "owner/dup")?.concurrency).toBe(2);
+  });
+
+  it("throws when no repos are supplied, and on a malformed repo ref", () => {
+    expect(() => resolveTargets(base)).toThrow(/No repositories to collect/);
+    expect(() => resolveTargets({ ...base, cliRepos: ["not-a-repo"] })).toThrow(/owner\/name/);
+  });
+});
