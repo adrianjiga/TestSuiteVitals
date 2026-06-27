@@ -24,7 +24,7 @@ hand-format.
 
 - **Node floor is 24** (`engines`), but local dev commonly runs on Node 22. `npm install` prints an
   EBADENGINE warning — that is expected. Everything dev-facing goes through `tsx`/`vitest`, which run
-  on 22, so **do not use Node-24-only runtime APIs** until M1 ships, or you break local dev.
+  on 22, so **do not use Node-24-only runtime APIs**, or you break local dev.
 - ESM throughout (`"type": "module"`). Relative imports **must** use `.js` specifiers even from `.ts`
   files (NodeNext resolution) — e.g. `import { resolveToken } from "./auth.js"`.
 
@@ -83,10 +83,9 @@ all three demo formats are now covered.
 
 The committed architecture docs live in [`docs/architecture/`](docs/architecture/overview.md)
 (overview, decisions D1–D12, event-schema, collector) — start there, and **update them after each
-milestone** (part of a milestone's done-criterion). `PLAN.md` is the fuller design doc but it is
-deliberately git-excluded (via `.git/info/exclude`) and never committed — it also holds private
-strategy/positioning/deadline content that must NOT go into `docs/`. Ask the user for `PLAN.md` if
-you need that context. The decisions that constrain code:
+milestone** (part of a milestone's done-criterion). A fuller design doc (`PLAN.md`) is kept
+local-only and is not part of this repository; ask the maintainer for it if you need design
+context beyond what `docs/` captures. The decisions that constrain code:
 
 - **Data layout:** partitioned NDJSON at `data/<owner>__<repo>/<YYYY-MM>.ndjson`; one record per test
   per run per matrix cell; every record carries `schema_version`.
