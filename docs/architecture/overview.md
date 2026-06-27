@@ -26,6 +26,12 @@ The collector authenticates once (single Octokit transport), lists workflow runs
 stored watermark, downloads report artifacts, dispatches a framework adapter by sniffing the
 extracted files, and appends normalized events with a dedup key so re-runs are always safe.
 
+Reporting reads the same files back: it streams a repo's NDJSON partitions one line at a time
+(never loading the whole history) and folds them into one rollup per test — collapsed across
+matrix cells, or per `(test, matrix cell)` as a report-time option — carrying the raw flake
+signals (pass-after-retry, intermittence, fingerprint diversity). The flakiness score over those
+signals is a later stage.
+
 ## Document map
 
 - [decisions.md](decisions.md) — the locked architecture decisions (D1–D12) with rationale.

@@ -59,7 +59,14 @@ both (`src/collect/config.ts` parses/validates and `resolveTargets` merges them 
 per-repo override → CLI flag → config default → built-in, de-duping repos named twice). The repos
 share one client/state-file/data-dir and run sequentially via `collectRepo`; state is keyed per
 repo and saved after each, so a crash mid-loop keeps the repos already collected. M1 and M2 are
-complete.
+complete; **M3 (report + scoring) is in progress**.
+
+Reporting reads back from the partitions (`src/report/`): `read.ts` streams a repo's events one
+line at a time, oldest month first (D3 — never materializes the whole history); `aggregate.ts`
+folds them via an incremental `Aggregator` into one `TestAggregate` per test `id` (or per
+`(id, matrix)` with `byMatrix`, D5). The aggregate computes the raw flake signals only —
+pass/fail/skip, pass-after-retry, retried/rerun runs, sha-keyed intermittence, fingerprint
+diversity — with no scoring opinion baked in; the score formula lands as its own M3 slice.
 
 Idempotency contract (D12): `collect` appends durably *first*, then advances the watermark and
 saves state — so a crash between is recovered by re-collecting (the `(run_id, run_attempt, id,
