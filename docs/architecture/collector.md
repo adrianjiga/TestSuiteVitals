@@ -103,6 +103,14 @@ re-collection a no-op. The watermark advances **only after** the durable append,
 an in-progress run; in-progress/queued runs are also tracked by id in `pending_runs` for explicit
 re-check. `--dry-run` skips all writes.
 
-The **M1 walking skeleton** is complete (idempotent end-to-end). **M2** is in progress: the
-Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency, and
-transport-level rate-limit backoff have landed; remaining M2 work is multi-repo config.
+A single `collect` invocation can target several repos — repeated `--repo` flags, a `--config`
+file, or both (`src/collect/config.ts`). Each config repo is a bare `owner/name` or an object
+with per-repo `hoursBack`/`concurrency` overrides, plus config-level defaults. Settings resolve
+most-specific-wins: per-repo value → CLI flag → config default → built-in; a repo named twice is
+de-duplicated. The repos share one client, state file, and data dir and are collected in
+sequence; state is keyed per repo (its own watermark), and is saved after each repo so a crash
+partway through keeps the repos already collected (D12, extended across the loop).
+
+The **M1 walking skeleton** is complete (idempotent end-to-end). **M2 is complete**: the
+Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency,
+transport-level rate-limit backoff, and multi-repo config have all landed.
