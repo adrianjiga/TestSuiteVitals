@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
 import { collectCommand } from "./commands/collect.js";
+import { reportCommand } from "./commands/report.js";
 
 const main = defineCommand({
   meta: {
@@ -10,6 +11,7 @@ const main = defineCommand({
   },
   subCommands: {
     collect: collectCommand,
+    report: reportCommand,
   },
 });
 
