@@ -23,6 +23,20 @@ const BAR: Record<RunOutcome, { h: number; c: string }> = {
   skipped: { h: 3, c: "var(--dim)" },
 };
 
+const HEADER_ROW = `    <div class="row head">
+      <span class="r-score">score</span>
+      <span>test</span>
+      <span>recent</span>
+      <span>retry</span>
+      <span>intermit</span>
+      <span>modes</span>
+      <span class="r-status">status</span>
+    </div>`;
+
+const LEGEND =
+  "score 0–100 flakiness · retry pass-after-retry rate · intermit commits that both passed and " +
+  "failed · modes distinct failure signatures · recent run outcomes, old → new";
+
 /**
  * Renders a self-contained HTML dashboard (inline CSS, zero runtime dependencies) — the
  * "vital signs" view: a dark monitor with one row per test, ranked by flake score, each with a
@@ -34,7 +48,7 @@ export function renderDashboard(ranked: RankedTests, meta: DashboardMeta): strin
 
   const eligibleRows =
     ranked.eligible.length > 0
-      ? ranked.eligible.map(row).join("\n")
+      ? `${HEADER_ROW}\n${ranked.eligible.map(row).join("\n")}`
       : `<div class="empty">No flaky tests above the min-runs threshold — all vitals stable.</div>`;
 
   const belowSection =
@@ -61,6 +75,7 @@ export function renderDashboard(ranked: RankedTests, meta: DashboardMeta): strin
       <span class="${flakyCount > 0 ? "warn" : "ok"}">${flakyCount} flaky</span>
       <span class="muted">${esc(meta.generatedAt)}${window}</span>
     </div>
+    <div class="legend">${LEGEND}</div>
   </header>
   <div class="rows">
 ${eligibleRows}
@@ -77,13 +92,14 @@ function row(test: ScoredTest): string {
   const { aggregate, score } = test;
   const sev = severity(score.score, score.eligible);
   const retry = Math.round(score.signals.retryFlakeRate * 100);
+  const { lead, context, full } = label(test);
   return `    <div class="row ${sev}">
       <span class="score">${score.score}</span>
-      <span class="name"><span class="file">${esc(label(test).file)}</span> › ${esc(label(test).title)}</span>
+      <span class="name" title="${esc(full)}"><span class="lead">${esc(lead)}</span><span class="ctx"> — ${esc(context)}</span></span>
       <span class="spark" title="recent runs (old → new)">${sparkline(aggregate.timeline)}</span>
-      <span class="sig">retry ${retry}%</span>
-      <span class="sig">int ${aggregate.intermittentShas}/${aggregate.distinctShas}</span>
-      <span class="sig">modes ${aggregate.fingerprints}</span>
+      <span class="sig">${retry}%</span>
+      <span class="sig">${aggregate.intermittentShas}/${aggregate.distinctShas}</span>
+      <span class="sig">${aggregate.fingerprints}</span>
       <span class="status">${statusLabel(score.score, score.eligible)}</span>
     </div>`;
 }
@@ -101,9 +117,15 @@ function sparkline(timeline: RunOutcome[] | undefined): string {
     .join("");
 }
 
-/** `file` and `title` for a test, with the matrix cell appended to the title when present. */
-function label(test: ScoredTest): { file: string; title: string } {
-  const path = test.aggregate.title_path.join(" › ");
+/**
+ * Splits a test's identity so the *distinguishing* part leads and survives truncation: the
+ * deepest title segment (the test name) is the lead; the file and enclosing suites are dim
+ * trailing context. `full` is the complete identifier, used as a hover tooltip.
+ */
+function label(test: ScoredTest): { lead: string; context: string; full: string } {
+  const path = test.aggregate.title_path;
+  const lead = path.at(-1) ?? test.aggregate.file;
+  const suites = path.slice(0, -1);
   const matrix = test.aggregate.matrix;
   const cell =
     matrix && Object.keys(matrix).length > 0
@@ -111,7 +133,8 @@ function label(test: ScoredTest): { file: string; title: string } {
           .map(([k, v]) => `${k}=${v}`)
           .join(",")}]`
       : "";
-  return { file: test.aggregate.file, title: `${path}${cell}` };
+  const context = [test.aggregate.file, ...suites].join(" › ") + cell;
+  return { lead, context, full: `${context} › ${lead}` };
 }
 
 function severity(score: number, eligible: boolean): string {
@@ -155,25 +178,30 @@ body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 13px/1.5 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
-main { max-width: 920px; margin: 0 auto; padding: 32px 20px 60px; }
-header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 8px; }
+main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 60px; }
+header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 4px; }
 .brand { font-size: 18px; font-weight: 700; letter-spacing: 2px; }
 .pulse { color: var(--bad); }
 .repo { color: var(--accent); margin-top: 2px; }
-.stats { margin-top: 8px; display: flex; gap: 16px; color: var(--text); }
+.stats { margin-top: 8px; display: flex; gap: 16px; }
+.legend { margin-top: 10px; color: var(--dim); font-size: 11px; }
 .rows { display: flex; flex-direction: column; }
 .row {
   display: grid;
-  grid-template-columns: 44px 1fr 86px 88px 70px 64px 78px;
-  align-items: center; gap: 12px;
+  grid-template-columns: 48px minmax(0, 1fr) 104px 56px 72px 56px 86px;
+  align-items: center; gap: 14px;
   padding: 9px 8px; border-bottom: 1px solid var(--border);
 }
+.row.head { border-bottom: 1px solid var(--border); padding-bottom: 7px; }
+.row.head span { color: var(--dim); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.row.head .r-score, .row.head .r-status { text-align: right; }
 .row .score { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .sev-high .score { color: var(--bad); }
 .sev-mid .score { color: var(--warn); }
 .sev-low .score, .sev-none .score { color: var(--dim); }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.name .file { color: var(--dim); }
+.name .lead { color: var(--text); }
+.name .ctx { color: var(--dim); }
 .spark { display: inline-flex; align-items: flex-end; height: 16px; gap: 1px; }
 .spark i { display: inline-block; width: 3px; border-radius: 1px; }
 .spark .nodata { width: 100%; height: 1px; background: var(--border); }
