@@ -99,6 +99,7 @@ describe("aggregate signals", () => {
       ev({ status: "passed", run: { run_id: 1, sha: "shared" } }),
       ev({ status: "failed", run: { run_id: 2, sha: "shared" } }),
     ]);
+    expect(sameCell[0]?.distinctShas).toBe(1);
     expect(sameCell[0]?.intermittentShas).toBe(1);
 
     // Same sha but different matrix cells is environment-dependent, not intermittence.
@@ -106,6 +107,7 @@ describe("aggregate signals", () => {
       ev({ status: "passed", matrix: { browser: "chrome" }, run: { run_id: 1, sha: "shared" } }),
       ev({ status: "failed", matrix: { browser: "firefox" }, run: { run_id: 2, sha: "shared" } }),
     ]);
+    expect(crossCell[0]?.distinctShas).toBe(2);
     expect(crossCell[0]?.intermittentShas).toBe(0);
   });
 
