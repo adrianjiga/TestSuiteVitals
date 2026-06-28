@@ -121,7 +121,8 @@ Flaky tests · owner/repo · 3 tests
 The **score** (0–100) treats flakiness as *inconsistency*: it blends pass-after-retry rate,
 same-commit intermittence, failure-mode diversity, and workflow re-runs. A test that always
 passes — or always fails the same way (broken, not flaky) — scores near zero. The columns show
-the signals behind the score so the ranking is explainable, not a magic number.
+the signals behind the score so the ranking is explainable, not a magic number. Scores are
+colored by severity on an interactive terminal; piped output is plain, and `NO_COLOR` is honored.
 
 > **Status (M3 complete):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
 > reports from one or more repos (repeatable `--repo` or a `--config` file) into dedup'd monthly
