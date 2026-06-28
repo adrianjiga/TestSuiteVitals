@@ -12,6 +12,7 @@ import { type CollectTarget, loadConfig, resolveTargets } from "../collect/confi
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
 import { nextWatermark } from "../collect/watermark.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
+import { colorSupported, createPalette, type Palette } from "../colors.js";
 import { downloadArtifactZip, listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
@@ -31,6 +32,7 @@ interface SharedOptions {
   dryRun: boolean;
   fullErrors: boolean;
   now: Date;
+  palette: Palette;
 }
 
 /** Running totals folded across all collected repos for the final summary. */
@@ -91,6 +93,7 @@ export const collectCommand = defineCommand({
   async run({ args, rawArgs }) {
     const hoursBack = parseHoursBack(args["hours-back"]);
     const concurrency = parseConcurrency(args.concurrency);
+    const palette = createPalette(colorSupported);
 
     const config = args.config ? await loadConfig(args.config) : undefined;
     const targets = resolveTargets({
@@ -101,7 +104,7 @@ export const collectCommand = defineCommand({
       defaultConcurrency: DEFAULT_CONCURRENCY,
     });
 
-    const client = await authenticate(args.token);
+    const client = await authenticate(args.token, palette);
     if (!client) {
       return;
     }
@@ -114,10 +117,11 @@ export const collectCommand = defineCommand({
       dryRun: args["dry-run"],
       fullErrors: args["full-errors"],
       now,
+      palette,
     };
 
     if (targets.length > 1) {
-      console.log(`Collecting ${targets.length} repositories.`);
+      console.log(palette.heading(`Collecting ${targets.length} repositories.`));
     }
 
     const totals: RunTotals = { repos: 0, eventsBuilt: 0, written: 0, deduped: 0 };
@@ -130,7 +134,7 @@ export const collectCommand = defineCommand({
     }
 
     if (targets.length > 1) {
-      printRunSummary(totals, shared.dryRun);
+      printRunSummary(totals, shared.dryRun, palette);
     }
   },
 });
@@ -149,20 +153,26 @@ async function collectRepo(
 ): Promise<RunTotals> {
   const { octokit } = client;
   const { ref, slug } = target;
+  const p = shared.palette;
   const previous = repoState(state, slug);
   const window = computeWindow(previous, { hoursBack: target.hoursBack, now: shared.now });
 
-  console.log(`\n[${slug}] Listing runs since ${window.since.toISOString()} (${window.source}).`);
+  console.log(
+    `\n${p.repo(`[${slug}]`)} Listing runs since ${p.dim(window.since.toISOString())} (${window.source}).`,
+  );
   if (window.source === "default") {
     console.log(
-      `  First run: defaulting to the last ${DEFAULT_BACKFILL_HOURS}h. Use --hours-back to go wider.`,
+      p.dim(
+        `  First run: defaulting to the last ${DEFAULT_BACKFILL_HOURS}h. Use --hours-back to go wider.`,
+      ),
     );
   }
 
   const runs = await listRunsSince(octokit, ref, window.since);
   const { completed, pending } = classifyRuns(runs);
+  const pendingText = pending.length > 0 ? p.warn(`${pending.length} pending`) : "0 pending";
   console.log(
-    `  Found ${runs.length} run(s): ${completed.length} completed, ${pending.length} pending.`,
+    p.dim(`  Found ${runs.length} run(s): ${completed.length} completed, `) + pendingText,
   );
 
   const workdir = await mkdtemp(join(tmpdir(), "suitevitals-"));
@@ -171,9 +181,13 @@ async function collectRepo(
       makeArtifactFetcher(octokit, ref),
       completed,
       workdir,
-      { dryRun: shared.dryRun, onProgress: reportProgress, concurrency: target.concurrency },
+      {
+        dryRun: shared.dryRun,
+        onProgress: (done, total) => reportProgress(done, total, p),
+        concurrency: target.concurrency,
+      },
     );
-    printArtifactSummary(summary, shared.dryRun);
+    printArtifactSummary(summary, shared.dryRun, p);
 
     if (shared.dryRun) {
       return { repos: 1, eventsBuilt: 0, written: 0, deduped: 0 };
@@ -183,7 +197,7 @@ async function collectRepo(
       fullErrors: shared.fullErrors,
       now: shared.now,
     });
-    printParseSummary(parsed.summary);
+    printParseSummary(parsed.summary, p);
 
     // Durable append first, then advance state — so a crash in between is recovered by
     // re-collecting (dedup absorbs the overlap), never skipped (D12).
@@ -195,7 +209,7 @@ async function collectRepo(
       last_collected_at: shared.now.toISOString(),
     };
     await saveState(shared.stateFile, state);
-    printAppendSummary(append, watermark);
+    printAppendSummary(append, watermark, p);
 
     return {
       repos: 1,
@@ -220,8 +234,8 @@ function makeArtifactFetcher(octokit: GitHubClient["octokit"], ref: RepoRef): Ar
  * Live progress for the fetch pool. On a TTY it rewrites a single line; on a non-TTY (CI,
  * redirected output) it prints periodic milestones instead of spamming.
  */
-function reportProgress(done: number, total: number): void {
-  const line = `  Fetching artifacts: ${done}/${total} run(s)…`;
+function reportProgress(done: number, total: number, palette: Palette): void {
+  const line = palette.dim(`  Fetching artifacts: ${done}/${total} run(s)…`);
   if (process.stderr.isTTY) {
     process.stderr.write(`\r${line}`);
     if (done === total) {
@@ -232,48 +246,61 @@ function reportProgress(done: number, total: number): void {
   }
 }
 
-function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean): void {
+function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean, p: Palette): void {
   const verb = dryRun ? "Would download" : "Downloaded";
   console.log(
-    `  Artifacts: scanned ${summary.runsScanned} run(s), saw ${summary.artifactsSeen} artifact(s).`,
+    p.dim(
+      `  Artifacts: scanned ${summary.runsScanned} run(s), saw ${summary.artifactsSeen} artifact(s).`,
+    ),
   );
   console.log(
-    `    ${verb} ${summary.reportArtifacts} report artifact(s)` +
-      (dryRun ? "." : `, extracted ${summary.filesExtracted} file(s).`),
+    p.dim(
+      `    ${verb} ${summary.reportArtifacts} report artifact(s)` +
+        (dryRun ? "." : `, extracted ${summary.filesExtracted} file(s).`),
+    ),
   );
   if (summary.expiredArtifacts > 0) {
     console.log(
-      `    ${summary.expiredArtifacts} expired artifact(s) across ${summary.runsWithExpired} run(s) (retention elapsed).`,
+      p.warn(
+        `    ${summary.expiredArtifacts} expired artifact(s) across ${summary.runsWithExpired} run(s) (retention elapsed).`,
+      ),
     );
   }
   if (summary.skippedArtifacts > 0) {
-    console.log(`    ${summary.skippedArtifacts} non-report artifact(s) skipped.`);
+    console.log(p.dim(`    ${summary.skippedArtifacts} non-report artifact(s) skipped.`));
   }
 }
 
-function printParseSummary(summary: ParseSummary): void {
+function printParseSummary(summary: ParseSummary, p: Palette): void {
   console.log(
-    `  Reports: parsed ${summary.filesParsed}/${summary.filesScanned} candidate file(s).`,
+    p.dim(`  Reports: parsed ${summary.filesParsed}/${summary.filesScanned} candidate file(s).`),
   );
-  console.log(
-    `    ${summary.eventsBuilt} test event(s): ${summary.passed} passed, ${summary.failed} failed, ${summary.skipped} skipped.`,
-  );
+  const passed = p.good(`${summary.passed} passed`);
+  const failed = summary.failed > 0 ? p.bad(`${summary.failed} failed`) : p.dim("0 failed");
+  const skipped = summary.skipped > 0 ? p.warn(`${summary.skipped} skipped`) : p.dim("0 skipped");
+  console.log(`    ${summary.eventsBuilt} test event(s): ${passed}, ${failed}, ${skipped}.`);
 }
 
-function printAppendSummary(append: AppendResult, watermark: string | undefined): void {
+function printAppendSummary(append: AppendResult, watermark: string | undefined, p: Palette): void {
+  const wrote =
+    append.written > 0
+      ? p.good(`wrote ${append.written} new event(s)`)
+      : p.dim("wrote 0 new event(s)");
   console.log(
-    `  Stored: wrote ${append.written} new event(s), ${append.deduped} duplicate(s) skipped across ${append.partitions} partition(s).`,
+    `  Stored: ${wrote}, ${p.dim(`${append.deduped} duplicate(s) skipped across ${append.partitions} partition(s).`)}`,
   );
-  console.log(`    Watermark advanced to ${watermark ?? "(unset)"}.`);
+  console.log(p.dim(`    Watermark advanced to ${watermark ?? "(unset)"}.`));
 }
 
-function printRunSummary(totals: RunTotals, dryRun: boolean): void {
+function printRunSummary(totals: RunTotals, dryRun: boolean, p: Palette): void {
   if (dryRun) {
-    console.log(`\nDone (dry run): scanned ${totals.repos} repositories.`);
+    console.log(p.heading(`\nDone (dry run): scanned ${totals.repos} repositories.`));
     return;
   }
   console.log(
-    `\nDone: ${totals.repos} repositories, wrote ${totals.written} new event(s), ${totals.deduped} duplicate(s) skipped.`,
+    p.heading(
+      `\nDone: ${totals.repos} repositories, wrote ${totals.written} new event(s), ${totals.deduped} duplicate(s) skipped.`,
+    ),
   );
 }
 
@@ -282,14 +309,17 @@ function printRunSummary(totals: RunTotals, dryRun: boolean): void {
  * reports the error, sets a non-zero exit code, and returns null so the caller can stop
  * cleanly. Other errors propagate.
  */
-async function authenticate(token: string | undefined): Promise<GitHubClient | null> {
+async function authenticate(
+  token: string | undefined,
+  palette: Palette,
+): Promise<GitHubClient | null> {
   try {
     const client = await createGitHubClient({ token });
-    console.log(`Authenticated with GitHub (token source: ${client.tokenSource}).`);
+    console.log(palette.dim(`Authenticated with GitHub (token source: ${client.tokenSource}).`));
     return client;
   } catch (error) {
     if (error instanceof AuthError) {
-      console.error(error.message);
+      console.error(palette.bad(error.message));
       process.exitCode = 1;
       return null;
     }
