@@ -87,13 +87,13 @@ export const collectCommand = defineCommand({
       description: `Number of runs to fetch in parallel (default ${DEFAULT_CONCURRENCY})`,
     },
   },
-  async run({ args }) {
+  async run({ args, rawArgs }) {
     const hoursBack = parseHoursBack(args["hours-back"]);
     const concurrency = parseConcurrency(args.concurrency);
 
     const config = args.config ? await loadConfig(args.config) : undefined;
     const targets = resolveTargets({
-      cliRepos: toRepoList(args.repo),
+      cliRepos: parseRepoFlags(rawArgs),
       cliHoursBack: hoursBack,
       cliConcurrency: concurrency,
       config,
@@ -296,12 +296,26 @@ async function authenticate(token: string | undefined): Promise<GitHubClient | n
   }
 }
 
-/** Normalizes citty's `--repo` (a string when given once, an array when repeated) to a list. */
-function toRepoList(value: unknown): string[] {
-  if (value === undefined) {
-    return [];
+/**
+ * Collects every `--repo` value from the raw argv. citty's parsed `args.repo` keeps only the
+ * last occurrence of a repeated string flag, so a multi-repo invocation has to read the raw
+ * args directly. Handles both `--repo owner/name` and `--repo=owner/name`.
+ */
+export function parseRepoFlags(rawArgs: string[]): string[] {
+  const repos: string[] = [];
+  for (let i = 0; i < rawArgs.length; i++) {
+    const arg = rawArgs[i];
+    if (arg === "--repo") {
+      const next = rawArgs[i + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        repos.push(next);
+        i++;
+      }
+    } else if (arg?.startsWith("--repo=")) {
+      repos.push(arg.slice("--repo=".length));
+    }
   }
-  return Array.isArray(value) ? value.map(String) : [String(value)];
+  return repos;
 }
 
 /** Parses and validates `--hours-back`; returns undefined when not provided. */
