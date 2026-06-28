@@ -1,3 +1,4 @@
+import { type Palette, plainPalette } from "../colors.js";
 import type { RankedTests, ScoredTest } from "./rank.js";
 
 export interface ReportMeta {
@@ -19,43 +20,60 @@ const TEST_COL = 46;
 const COLUMNS =
   " SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES";
 
-/** Renders the ranked report as a terminal table. */
+/** Renders the ranked report as a terminal table. Color is applied only when `palette` enables it. */
 export function renderReport(
   ranked: RankedTests,
   meta: ReportMeta,
   options: RenderOptions,
+  palette: Palette = plainPalette,
 ): string {
   const window = meta.windowLabel ? ` (${meta.windowLabel})` : "";
-  const lines = [`Flaky tests · ${meta.slug} · ${meta.totalTests} tests${window}`, ""];
+  const lines = [
+    `${palette.heading("Flaky tests")} · ${palette.repo(meta.slug)} · ${meta.totalTests} tests${window}`,
+    "",
+  ];
 
   const shown = ranked.eligible.slice(0, options.limit);
   if (shown.length === 0) {
-    lines.push("No flaky tests above the min-runs threshold.");
+    lines.push(palette.good("No flaky tests above the min-runs threshold."));
   } else {
-    lines.push(COLUMNS, ...shown.map(row));
+    lines.push(palette.dim(COLUMNS), ...shown.map((test) => row(test, palette)));
   }
 
   if (options.all && ranked.belowThreshold.length > 0) {
-    lines.push("", `Below the min-runs threshold (${ranked.belowThreshold.length}):`);
-    lines.push(...ranked.belowThreshold.map(row));
+    lines.push("", palette.dim(`Below the min-runs threshold (${ranked.belowThreshold.length}):`));
+    lines.push(...ranked.belowThreshold.map((test) => row(test, palette)));
   } else if (ranked.belowThreshold.length > 0) {
     lines.push(
       "",
-      `${ranked.belowThreshold.length} test(s) below the min-runs threshold hidden (--all to show).`,
+      palette.dim(
+        `${ranked.belowThreshold.length} test(s) below the min-runs threshold hidden (--all to show).`,
+      ),
     );
   }
 
   return lines.join("\n");
 }
 
-function row(test: ScoredTest): string {
+// Each column is padded to its visible width *before* coloring, so the ANSI escapes never
+// throw off alignment.
+function row(test: ScoredTest, palette: Palette): string {
   const { aggregate, score } = test;
   const name = truncate(label(test), TEST_COL).padEnd(TEST_COL);
-  const scoreCol = String(score.score).padStart(5);
-  const runs = String(score.eligibleRuns).padStart(5);
-  const retry = `${Math.round(score.signals.retryFlakeRate * 100)}%`.padStart(6);
-  const intermit = `${aggregate.intermittentShas}/${aggregate.distinctShas}`.padStart(8);
-  const modes = String(aggregate.fingerprints).padStart(5);
+  const scoreCol = palette.score(String(score.score).padStart(5), score.score);
+  const runs = palette.dim(String(score.eligibleRuns).padStart(5));
+  const retry = palette.signal(
+    `${Math.round(score.signals.retryFlakeRate * 100)}%`.padStart(6),
+    score.signals.retryFlakeRate > 0,
+  );
+  const intermit = palette.signal(
+    `${aggregate.intermittentShas}/${aggregate.distinctShas}`.padStart(8),
+    aggregate.intermittentShas > 0,
+  );
+  const modes = palette.signal(
+    String(aggregate.fingerprints).padStart(5),
+    aggregate.fingerprints > 1,
+  );
   return ` ${scoreCol}  ${name}  ${runs}  ${retry}  ${intermit}  ${modes}`;
 }
 

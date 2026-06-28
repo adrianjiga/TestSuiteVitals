@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createPalette } from "../src/colors.js";
 import type { TestAggregate } from "../src/report/aggregate.js";
 import { rankTests } from "../src/report/rank.js";
 import { renderReport, renderReportJson } from "../src/report/render.js";
@@ -50,6 +51,19 @@ describe("renderReport", () => {
     const out = renderReport(ranked, { slug: "o/r", totalTests: 3 }, { limit: 1, all: false });
     expect(out).toContain("flaky");
     expect(out).not.toContain("› stable");
+  });
+
+  it("stays plain by default and applies ANSI codes with an enabled palette", () => {
+    const plain = renderReport(ranked, { slug: "o/r", totalTests: 3 }, { limit: 20, all: false });
+    expect(plain).not.toContain("[");
+
+    const colored = renderReport(
+      ranked,
+      { slug: "o/r", totalTests: 3 },
+      { limit: 20, all: false },
+      createPalette(true),
+    );
+    expect(colored).toContain("[");
   });
 });
 

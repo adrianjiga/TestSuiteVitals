@@ -1,4 +1,5 @@
 import { defineCommand } from "citty";
+import { colorSupported, createPalette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
 import { Aggregator } from "../report/aggregate.js";
 import { parseSince, rankTests } from "../report/rank.js";
@@ -98,7 +99,8 @@ export const reportCommand = defineCommand({
       totalTests: aggregates.length,
       ...(args.since ? { windowLabel: `last ${args.since}` } : {}),
     };
-    console.log(renderReport(ranked, meta, { limit, all: args.all }));
+    const palette = createPalette(colorSupported);
+    console.log(renderReport(ranked, meta, { limit, all: args.all }, palette));
   },
 });
 
