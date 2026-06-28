@@ -7,7 +7,7 @@ you already upload and tells you which tests are flaky, how badly, and where.
 No server, no instrumentation changes — point it at a GitHub repo, and it
 normalizes the test-report artifacts into plain files you own.
 
-> **Status:** early development (M2 complete — collector). Not yet published to npm.
+> **Status:** early development (M3 complete — collector + flake report). Not yet published to npm.
 
 ## Documentation
 
@@ -89,13 +89,45 @@ CLI flag, which beats the config-level default, which beats the built-in. A repo
 both the CLI and in the config is collected once. Repos share one state file and data
 directory; state is keyed per repo, so each has its own independent watermark.
 
-> **Status (M2 complete):** `collect` authenticates, lists workflow runs, downloads +
-> extracts report artifacts **in parallel** (`--concurrency`, with live progress and
-> transport-level rate-limit backoff), parses **JUnit**, **Playwright blob**, and
-> **mochawesome** (Cypress/Mocha) reports into normalized events — including per-retry
-> `attempts[]` and the matrix dimension — and appends them to monthly NDJSON partitions with
-> dedup (running it twice produces zero duplicates). Multiple repos can be collected in one
-> run via repeatable `--repo` or a `--config` file.
+## Reporting
+
+Once events are collected, rank a repo's tests by flakiness:
+
+```bash
+suitevitals report --repo <owner/name> [options]
+```
+
+| Option | Description |
+| --- | --- |
+| `--repo <owner/name>` | Repository to report on (required). |
+| `--data-dir <path>` | Directory holding the NDJSON partitions (default `data`). |
+| `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
+| `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |
+| `--since <Nd\|ISO>` | Only include runs in the window (e.g. `30d`, `12h`, or a timestamp). |
+| `--limit <n>` | Show at most this many ranked tests (default 20). |
+| `--all` | Also show tests below the min-runs threshold. |
+| `--json` | Emit JSON instead of the table. |
+
+```
+Flaky tests · owner/repo · 3 tests
+
+ SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
+    50  webTables.spec.js › should delete a record          8    100%       0/8      2
+     0  login.spec.js › remembers the session               8      0%       0/8      0
+
+1 test(s) below the min-runs threshold hidden (--all to show).
+```
+
+The **score** (0–100) treats flakiness as *inconsistency*: it blends pass-after-retry rate,
+same-commit intermittence, failure-mode diversity, and workflow re-runs. A test that always
+passes — or always fails the same way (broken, not flaky) — scores near zero. The columns show
+the signals behind the score so the ranking is explainable, not a magic number.
+
+> **Status (M3 complete):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
+> reports from one or more repos (repeatable `--repo` or a `--config` file) into dedup'd monthly
+> NDJSON partitions, in parallel with rate-limit backoff. `report` streams those partitions back,
+> aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON).
+> Next: an HTML dashboard and `compact` (M4).
 
 ## License
 
