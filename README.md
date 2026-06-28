@@ -99,7 +99,7 @@ suitevitals report --repo <owner/name> [options]
 
 | Option | Description |
 | --- | --- |
-| `--repo <owner/name>` | Repository to report on (required). |
+| `--repo <owner/name>` | Repository to report on (required; one repo per run). |
 | `--data-dir <path>` | Directory holding the NDJSON partitions (default `data`). |
 | `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
 | `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |

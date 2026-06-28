@@ -19,6 +19,7 @@ import type { RepoRef } from "../github/repo.js";
 import { classifyRuns, listRunsSince } from "../github/runs.js";
 import { loadState, repoState, type State, saveState } from "../state/state.js";
 import { type AppendResult, appendEvents } from "../store/ndjson.js";
+import { parseRepoFlags } from "./repo-flags.js";
 
 const DEFAULT_STATE_PATH = "state.json";
 const DEFAULT_DATA_DIR = "data";
@@ -294,28 +295,6 @@ async function authenticate(token: string | undefined): Promise<GitHubClient | n
     }
     throw error;
   }
-}
-
-/**
- * Collects every `--repo` value from the raw argv. citty's parsed `args.repo` keeps only the
- * last occurrence of a repeated string flag, so a multi-repo invocation has to read the raw
- * args directly. Handles both `--repo owner/name` and `--repo=owner/name`.
- */
-export function parseRepoFlags(rawArgs: string[]): string[] {
-  const repos: string[] = [];
-  for (let i = 0; i < rawArgs.length; i++) {
-    const arg = rawArgs[i];
-    if (arg === "--repo") {
-      const next = rawArgs[i + 1];
-      if (next !== undefined && !next.startsWith("-")) {
-        repos.push(next);
-        i++;
-      }
-    } else if (arg?.startsWith("--repo=")) {
-      repos.push(arg.slice("--repo=".length));
-    }
-  }
-  return repos;
 }
 
 /** Parses and validates `--hours-back`; returns undefined when not provided. */
