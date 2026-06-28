@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
 import { collectCommand } from "./commands/collect.js";
+import { dashboardCommand } from "./commands/dashboard.js";
 import { reportCommand } from "./commands/report.js";
 
 const main = defineCommand({
@@ -12,6 +13,7 @@ const main = defineCommand({
   subCommands: {
     collect: collectCommand,
     report: reportCommand,
+    dashboard: dashboardCommand,
   },
 });
 
