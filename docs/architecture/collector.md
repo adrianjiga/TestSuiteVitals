@@ -48,7 +48,9 @@ silently.
   signals, scores them, and prints a ranked terminal table (or `--json`), with the
   matrix-grouping option per [D5](decisions.md#d5--test-identity-hashfile--title_path),
   a `--min-runs` threshold, a `--since` window, and `--all`/`--limit`.
-- `suitevitals dashboard` — self-contained HTML.
+- `suitevitals dashboard` — **implemented**: renders the same ranking as a self-contained
+  HTML "vital signs" monitor (inline CSS, zero runtime deps), one row per test with a heartbeat
+  sparkline of recent run outcomes.
 - `suitevitals compact` — zstd closed months ([D2](decisions.md#d2--compression-zstd-on-closed-months)).
 - `suitevitals doctor <repo>` — inspects workflows; if no report artifacts are uploaded,
   prints the exact reporter + `upload-artifact` YAML fix for the detected framework.

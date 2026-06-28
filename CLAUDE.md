@@ -78,7 +78,13 @@ diversity beyond the first mode (0.15), workflow re-run rate (0.10) — over `el
 The `report` command (`src/commands/report.ts`) wires it together: stream → aggregate → `rankTests`
 (`rank.ts`, splits eligible/below-threshold, sorts by score then evidence) → `render.ts` (terminal
 table or `--json`). Flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--limit`, `--all`.
-M1–M3 are complete; M4 (dashboard + `compact`) is next.
+
+The `dashboard` command (`src/commands/dashboard.ts`) renders the same `read → aggregate → rank`
+pipeline as a self-contained HTML file (`src/report/dashboard.ts` — inline CSS, zero runtime deps):
+a dark "vital signs" monitor, one row per test with a heartbeat sparkline. The sparkline needs a
+per-test time-ordered outcome list, so the `Aggregator` takes an opt-in `timeline` flag (off for
+`report`, so it pays no memory cost) that records a `RunOutcome[]` sorted by run start. M1–M3 are
+complete; M4 is in progress (dashboard landed; `compact` is next).
 
 Terminal color lives in `src/colors.ts`: a semantic `Palette` (heading/repo/dim/good/warn/bad/
 score/signal) built over picocolors. `createPalette(enabled)` returns a no-op palette when
