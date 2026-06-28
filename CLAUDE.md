@@ -66,7 +66,14 @@ line at a time, oldest month first (D3 — never materializes the whole history)
 folds them via an incremental `Aggregator` into one `TestAggregate` per test `id` (or per
 `(id, matrix)` with `byMatrix`, D5). The aggregate computes the raw flake signals only —
 pass/fail/skip, pass-after-retry, retried/rerun runs, sha-keyed intermittence, fingerprint
-diversity — with no scoring opinion baked in; the score formula lands as its own M3 slice.
+diversity — with no scoring opinion baked in.
+
+`score.ts` turns an aggregate into a 0–100 flake score. The premise: flaky = *inconsistency*, so
+a consistently-failing test (broken, not flaky) scores ~0. It is a weighted blend of normalized
+signals — pass-after-retry rate (0.45), same-commit intermittence rate (0.30), failure-mode
+diversity beyond the first mode (0.15), workflow re-run rate (0.10) — over `eligibleRuns`
+(passed + failed; skips excluded). Samples below `minRuns` (default 5) are scored but flagged
+`eligible: false` so the report can set them aside. Remaining M3 slice: the `report` command.
 
 Idempotency contract (D12): `collect` appends durably *first*, then advances the watermark and
 saves state — so a crash between is recovered by re-collecting (the `(run_id, run_attempt, id,
