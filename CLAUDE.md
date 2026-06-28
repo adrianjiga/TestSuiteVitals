@@ -73,7 +73,12 @@ a consistently-failing test (broken, not flaky) scores ~0. It is a weighted blen
 signals — pass-after-retry rate (0.45), same-commit intermittence rate (0.30), failure-mode
 diversity beyond the first mode (0.15), workflow re-run rate (0.10) — over `eligibleRuns`
 (passed + failed; skips excluded). Samples below `minRuns` (default 5) are scored but flagged
-`eligible: false` so the report can set them aside. Remaining M3 slice: the `report` command.
+`eligible: false` so the report can set them aside.
+
+The `report` command (`src/commands/report.ts`) wires it together: stream → aggregate → `rankTests`
+(`rank.ts`, splits eligible/below-threshold, sorts by score then evidence) → `render.ts` (terminal
+table or `--json`). Flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--limit`, `--all`.
+M1–M3 are complete; M4 (dashboard + `compact`) is next.
 
 Idempotency contract (D12): `collect` appends durably *first*, then advances the watermark and
 saves state — so a crash between is recovered by re-collecting (the `(run_id, run_attempt, id,

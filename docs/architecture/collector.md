@@ -44,8 +44,10 @@ silently.
 
 ## Other commands
 
-- `suitevitals report` — terminal report ranked by flake score, with the matrix-grouping
-  option per [D5](decisions.md#d5--test-identity-hashfile--title_path).
+- `suitevitals report` — **implemented**: streams the partitions, aggregates per-test flake
+  signals, scores them, and prints a ranked terminal table (or `--json`), with the
+  matrix-grouping option per [D5](decisions.md#d5--test-identity-hashfile--title_path),
+  a `--min-runs` threshold, a `--since` window, and `--all`/`--limit`.
 - `suitevitals dashboard` — self-contained HTML.
 - `suitevitals compact` — zstd closed months ([D2](decisions.md#d2--compression-zstd-on-closed-months)).
 - `suitevitals doctor <repo>` — inspects workflows; if no report artifacts are uploaded,
@@ -113,4 +115,6 @@ partway through keeps the repos already collected (D12, extended across the loop
 
 The **M1 walking skeleton** is complete (idempotent end-to-end). **M2 is complete**: the
 Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency,
-transport-level rate-limit backoff, and multi-repo config have all landed.
+transport-level rate-limit backoff, and multi-repo config have all landed. **M3 is complete**:
+the `report` command streams the partitions, aggregates per-test flake signals, scores them,
+and prints a ranked table (or `--json`). Next is M4 (HTML dashboard + `compact`).
