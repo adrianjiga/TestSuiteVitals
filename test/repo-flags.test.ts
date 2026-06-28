@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRepoFlags } from "../src/commands/collect.js";
+import { parseRepoFlags } from "../src/commands/repo-flags.js";
 
 describe("parseRepoFlags", () => {
   it("collects a single --repo", () => {

@@ -5,6 +5,7 @@ import { parseSince, rankTests } from "../report/rank.js";
 import { readRepoEvents } from "../report/read.js";
 import { type ReportMeta, renderReport, renderReportJson } from "../report/render.js";
 import { DEFAULT_MIN_RUNS } from "../report/score.js";
+import { parseRepoFlags } from "./repo-flags.js";
 
 const DEFAULT_DATA_DIR = "data";
 const DEFAULT_LIMIT = 20;
@@ -53,8 +54,17 @@ export const reportCommand = defineCommand({
       default: false,
     },
   },
-  async run({ args }) {
-    const slug = repoSlug(parseRepoRef(args.repo));
+  async run({ args, rawArgs }) {
+    // report works on one repo at a time; reject extra --repo flags rather than silently
+    // using only the last (citty keeps the last value of a repeated string flag).
+    const repos = parseRepoFlags(rawArgs);
+    if (repos.length > 1) {
+      throw new Error(
+        `report works on a single repository, but ${repos.length} --repo flags were given. ` +
+          "Run it once per repo.",
+      );
+    }
+    const slug = repoSlug(parseRepoRef(repos[0] ?? args.repo));
     const minRuns = parsePositiveInt(args["min-runs"], "--min-runs") ?? DEFAULT_MIN_RUNS;
     const limit = parsePositiveInt(args.limit, "--limit") ?? DEFAULT_LIMIT;
     const since = parseSince(args.since);
