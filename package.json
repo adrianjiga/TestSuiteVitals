@@ -40,7 +40,8 @@
     "citty": "^0.2.2",
     "fast-xml-parser": "^5.9.3",
     "fflate": "^0.8.3",
-    "p-limit": "^7.3.0"
+    "p-limit": "^7.3.0",
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.1",

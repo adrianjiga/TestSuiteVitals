@@ -80,6 +80,13 @@ The `report` command (`src/commands/report.ts`) wires it together: stream → ag
 table or `--json`). Flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--limit`, `--all`.
 M1–M3 are complete; M4 (dashboard + `compact`) is next.
 
+Terminal color lives in `src/colors.ts`: a semantic `Palette` (heading/repo/dim/good/warn/bad/
+score/signal) built over picocolors. `createPalette(enabled)` returns a no-op palette when
+disabled, so rendering stays pure — `renderReport` and the `collect` print helpers take an
+injected palette and default to plain (tests assert on colorless output). Commands enable color
+via `colorSupported` (picocolors' TTY / `NO_COLOR` / `FORCE_COLOR` detection). `--json` is never
+colored. Color is applied *after* column padding so ANSI codes never break table alignment.
+
 Idempotency contract (D12): `collect` appends durably *first*, then advances the watermark and
 saves state — so a crash between is recovered by re-collecting (the `(run_id, run_attempt, id,
 matrix)` dedup absorbs the overlap), never skipped. Running `collect` twice yields zero new writes.
