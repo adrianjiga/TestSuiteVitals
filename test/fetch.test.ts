@@ -147,4 +147,51 @@ describe("fetchReportArtifacts", () => {
       [3, 3],
     ]);
   });
+
+  it("sniffs unnamed artifacts (tier 3) only when a run has no name match", async () => {
+    const fetcher: ArtifactFetcher = {
+      // No report-name match — the report is uploaded as "test-output".
+      list: vi.fn(async () => [artifact(20, "test-output"), artifact(21, "screenshots")]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { summary, reports } = await fetchReportArtifacts(fetcher, [run(1)], workdir);
+
+    expect(summary.reportArtifacts).toBe(0);
+    expect(summary.sniffedArtifacts).toBe(2);
+    expect(summary.skippedArtifacts).toBe(0);
+    expect(fetcher.download).toHaveBeenCalledTimes(2);
+    expect(reports).toHaveLength(1);
+  });
+
+  it("does not sniff when a name match exists — skipped artifacts stay un-downloaded", async () => {
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async () => [artifact(30, "junit-report"), artifact(31, "videos")]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { summary } = await fetchReportArtifacts(fetcher, [run(1)], workdir);
+
+    expect(summary.reportArtifacts).toBe(1);
+    expect(summary.sniffedArtifacts).toBe(0);
+    expect(summary.skippedArtifacts).toBe(1);
+    expect(fetcher.download).toHaveBeenCalledTimes(1); // only the named report
+  });
+
+  it("skips oversized sniff candidates and reports them, never silently", async () => {
+    const big = { id: 40, name: "huge-bundle", size_bytes: 200 * 1024 * 1024, expired: false };
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async () => [big, artifact(41, "small-output")]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { summary } = await fetchReportArtifacts(fetcher, [run(1)], workdir, {
+      maxArtifactMb: 100,
+    });
+
+    expect(summary.sniffedArtifacts).toBe(1); // only the small one
+    expect(summary.oversizedArtifacts).toBe(1); // the 200 MB bundle, surfaced not dropped
+    expect(fetcher.download).toHaveBeenCalledTimes(1);
+    expect(fetcher.download).toHaveBeenCalledWith(41);
+  });
 });
