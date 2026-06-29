@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { defineCommand, runMain } from "citty";
 import { collectCommand } from "./commands/collect.js";
+import { compactCommand } from "./commands/compact.js";
 import { dashboardCommand } from "./commands/dashboard.js";
 import { reportCommand } from "./commands/report.js";
 
@@ -14,6 +15,7 @@ const main = defineCommand({
     collect: collectCommand,
     report: reportCommand,
     dashboard: dashboardCommand,
+    compact: compactCommand,
   },
 });
 
