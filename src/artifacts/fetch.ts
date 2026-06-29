@@ -7,6 +7,9 @@ import { extractZipNested } from "./extract.js";
 /** Default number of runs fetched in parallel; balances throughput against rate limits. */
 export const DEFAULT_CONCURRENCY = 5;
 
+/** Default size ceiling (MB) for tier-3 sniffing, so failure videos/traces never dominate (D9). */
+export const DEFAULT_MAX_ARTIFACT_MB = 100;
+
 /** The two artifact operations the fetcher needs; injectable so the orchestration is testable. */
 export interface ArtifactFetcher {
   list(runId: number): Promise<ArtifactMeta[]>;
@@ -26,6 +29,11 @@ export interface ArtifactFetchSummary {
   filesExtracted: number;
   expiredArtifacts: number;
   runsWithExpired: number;
+  /** Non-report artifacts examined by content sniff because the run had no name match (D9 tier 3). */
+  sniffedArtifacts: number;
+  /** Sniff candidates skipped for exceeding the size cap — surfaced, never silently dropped. */
+  oversizedArtifacts: number;
+  /** Non-report artifacts left un-examined (a name match existed, so tier-3 did not run). */
   skippedArtifacts: number;
 }
 
@@ -41,6 +49,8 @@ export interface ArtifactFetchOptions {
   onProgress?: (done: number, total: number) => void;
   /** Max runs fetched in parallel. Defaults to {@link DEFAULT_CONCURRENCY}. */
   concurrency?: number;
+  /** Size ceiling (MB) for tier-3 sniff candidates. Defaults to {@link DEFAULT_MAX_ARTIFACT_MB}. */
+  maxArtifactMb?: number;
 }
 
 /** What one run contributed, computed in isolation so runs can be fetched in parallel. */
@@ -49,6 +59,8 @@ interface RunOutcome {
   artifactsSeen: number;
   reportArtifacts: number;
   expiredArtifacts: number;
+  sniffedArtifacts: number;
+  oversizedArtifacts: number;
   skippedArtifacts: number;
   files: string[];
 }
@@ -61,6 +73,8 @@ function emptySummary(): ArtifactFetchSummary {
     filesExtracted: 0,
     expiredArtifacts: 0,
     runsWithExpired: 0,
+    sniffedArtifacts: 0,
+    oversizedArtifacts: 0,
     skippedArtifacts: 0,
   };
 }
@@ -82,14 +96,20 @@ export async function fetchReportArtifacts(
   workdir: string,
   options: ArtifactFetchOptions = {},
 ): Promise<ArtifactFetchResult> {
-  const { dryRun = false, onProgress, concurrency = DEFAULT_CONCURRENCY } = options;
+  const {
+    dryRun = false,
+    onProgress,
+    concurrency = DEFAULT_CONCURRENCY,
+    maxArtifactMb = DEFAULT_MAX_ARTIFACT_MB,
+  } = options;
   const limit = pLimit(Math.max(1, concurrency));
+  const maxArtifactBytes = maxArtifactMb * 1024 * 1024;
 
   let completed = 0;
   const outcomes = await Promise.all(
     runs.map((run) =>
       limit(async () => {
-        const outcome = await fetchRun(fetcher, run, workdir, dryRun);
+        const outcome = await fetchRun(fetcher, run, workdir, dryRun, maxArtifactBytes);
         completed++;
         onProgress?.(completed, runs.length);
         return outcome;
@@ -100,19 +120,40 @@ export async function fetchReportArtifacts(
   return foldOutcomes(outcomes);
 }
 
-/** Fetches and extracts one run's report artifacts in isolation (no shared state). */
+/**
+ * Fetches and extracts one run's artifacts in isolation (no shared state). Tier 2 downloads the
+ * report-name matches. Tier 3 (D9): only when a run has *no* name match, the remaining artifacts
+ * under the size cap are downloaded and extracted too, so a report uploaded under an unexpected
+ * name is still found — the content sniff in the parse step discards anything that is not a report.
+ * Oversized sniff candidates are counted and reported, never silently dropped.
+ */
 async function fetchRun(
   fetcher: ArtifactFetcher,
   run: WorkflowRun,
   workdir: string,
   dryRun: boolean,
+  maxArtifactBytes: number,
 ): Promise<RunOutcome> {
   const artifacts = await fetcher.list(run.run_id);
   const partition = partitionArtifacts(artifacts);
 
+  // Tier 3 runs only when no report-name match was found for this run.
+  const sniffRun = partition.reports.length === 0;
+  const toSniff: ArtifactMeta[] = [];
+  let oversized = 0;
+  if (sniffRun) {
+    for (const artifact of partition.skipped) {
+      if (artifact.size_bytes > maxArtifactBytes) {
+        oversized++;
+      } else {
+        toSniff.push(artifact);
+      }
+    }
+  }
+
   const files: string[] = [];
   if (!dryRun) {
-    for (const artifact of partition.reports) {
+    for (const artifact of [...partition.reports, ...toSniff]) {
       const zip = await fetcher.download(artifact.id);
       const dest = join(workdir, String(run.run_id), String(artifact.id));
       files.push(...(await extractZipNested(zip, dest)));
@@ -124,7 +165,10 @@ async function fetchRun(
     artifactsSeen: artifacts.length,
     reportArtifacts: partition.reports.length,
     expiredArtifacts: partition.expired.length,
-    skippedArtifacts: partition.skipped.length,
+    sniffedArtifacts: toSniff.length,
+    oversizedArtifacts: oversized,
+    // When tier-3 ran, the skipped bucket was examined (sniffed/oversized); otherwise it is left alone.
+    skippedArtifacts: sniffRun ? 0 : partition.skipped.length,
     files,
   };
 }
@@ -139,6 +183,8 @@ function foldOutcomes(outcomes: RunOutcome[]): ArtifactFetchResult {
     summary.artifactsSeen += outcome.artifactsSeen;
     summary.reportArtifacts += outcome.reportArtifacts;
     summary.expiredArtifacts += outcome.expiredArtifacts;
+    summary.sniffedArtifacts += outcome.sniffedArtifacts;
+    summary.oversizedArtifacts += outcome.oversizedArtifacts;
     summary.skippedArtifacts += outcome.skippedArtifacts;
     if (outcome.expiredArtifacts > 0) {
       summary.runsWithExpired++;

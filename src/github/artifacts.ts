@@ -29,7 +29,7 @@ export interface PartitionedArtifacts {
   reports: ArtifactMeta[];
   /** Expired blobs — count for the summary; cannot be downloaded. */
   expired: ArtifactMeta[];
-  /** Live non-report artifacts — tier-3 sniff candidates (deferred to M5). */
+  /** Live non-report artifacts — tier-3 sniff candidates when a run has no name match (D9). */
   skipped: ArtifactMeta[];
 }
 
