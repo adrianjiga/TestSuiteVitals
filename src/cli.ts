@@ -3,6 +3,7 @@ import { defineCommand, runMain } from "citty";
 import { collectCommand } from "./commands/collect.js";
 import { compactCommand } from "./commands/compact.js";
 import { dashboardCommand } from "./commands/dashboard.js";
+import { doctorCommand } from "./commands/doctor.js";
 import { reportCommand } from "./commands/report.js";
 
 const main = defineCommand({
@@ -16,6 +17,7 @@ const main = defineCommand({
     report: reportCommand,
     dashboard: dashboardCommand,
     compact: compactCommand,
+    doctor: doctorCommand,
   },
 });
 
