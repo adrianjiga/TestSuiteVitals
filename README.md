@@ -124,11 +124,32 @@ passes — or always fails the same way (broken, not flaky) — scores near zero
 the signals behind the score so the ranking is explainable, not a magic number. Scores are
 colored by severity on an interactive terminal; piped output is plain, and `NO_COLOR` is honored.
 
-> **Status (M3 complete):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
+### Dashboard
+
+Generate a self-contained HTML dashboard — a dark "vital signs" monitor, one row per test
+ranked by flake score, each with a heartbeat sparkline of its recent run outcomes:
+
+```bash
+suitevitals dashboard --repo <owner/name> [-o out.html] [--by-matrix] [--min-runs <n>] [--since <Nd|ISO>]
+```
+
+| Option | Description |
+| --- | --- |
+| `--repo <owner/name>` | Repository to report on (required; one repo per run). |
+| `-o, --output <path>` | Output HTML file (default `<owner>__<repo>.html`). |
+| `--data-dir <path>` | Directory holding the NDJSON partitions (default `data`). |
+| `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
+| `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |
+| `--since <Nd\|ISO>` | Only include runs in the window (e.g. `30d`). |
+
+The output is a single HTML file with inline CSS and no runtime dependencies — open it, screenshot
+it, commit it, or host it anywhere.
+
+> **Status (M4 in progress):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
 > reports from one or more repos (repeatable `--repo` or a `--config` file) into dedup'd monthly
 > NDJSON partitions, in parallel with rate-limit backoff. `report` streams those partitions back,
-> aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON).
-> Next: an HTML dashboard and `compact` (M4).
+> aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON);
+> `dashboard` renders the same ranking as a self-contained HTML monitor. Next: `compact` (zstd).
 
 ## License
 

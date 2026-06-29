@@ -120,4 +120,23 @@ describe("aggregate signals", () => {
     expect(rows[0]?.firstSeen).toBe("2026-06-01T00:00:00Z");
     expect(rows[0]?.lastSeen).toBe("2026-06-03T00:00:00Z");
   });
+
+  it("collects a time-ordered outcome timeline only when requested", () => {
+    const events = [
+      ev({ status: "passed", run: { run_id: 2, sha: "b", started_at: "2026-06-02T00:00:00Z" } }),
+      ev({ status: "failed", run: { run_id: 1, sha: "a", started_at: "2026-06-01T00:00:00Z" } }),
+      ev({
+        status: "passed",
+        flaky: true,
+        run: { run_id: 3, sha: "c", started_at: "2026-06-03T00:00:00Z" },
+      }),
+    ];
+    expect(aggregate(events)[0]?.timeline).toBeUndefined();
+    // Sorted by run start; a flaky run is distinguished from a clean pass.
+    expect(aggregate(events, { timeline: true })[0]?.timeline).toEqual([
+      "failed",
+      "passed",
+      "flaky",
+    ]);
+  });
 });
