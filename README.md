@@ -7,7 +7,7 @@ you already upload and tells you which tests are flaky, how badly, and where.
 No server, no instrumentation changes — point it at a GitHub repo, and it
 normalizes the test-report artifacts into plain files you own.
 
-> **Status:** early development (M4 complete — collector, report, dashboard, compact). Not yet published to npm.
+> **Status:** v1 feature-complete (M1–M5: collect, report, dashboard, compact, doctor). Not yet published to npm.
 
 ## Documentation
 
@@ -60,6 +60,7 @@ suitevitals collect --config repos.json                 # repos from a config fi
 | `--state-file <path>` | Path to the state file (default `state.json`). |
 | `--data-dir <path>` | Directory for the NDJSON event partitions (default `data`). |
 | `--concurrency <n>` | Number of runs to fetch in parallel (default 5). |
+| `--max-artifact-mb <n>` | Size cap when sniffing unnamed artifacts for reports (default 100). |
 | `--full-errors` | Store full error messages without redaction or truncation. |
 | `--dry-run` | Show what would be fetched without writing any data. |
 
@@ -173,12 +174,13 @@ It detects the framework from the repo's manifests (Playwright, Cypress, Vitest,
 Java/JUnit) and either confirms collection will work or hands you copy-pasteable YAML to make it
 work. This is the zero-to-collecting onboarding path.
 
-> **Status (M5 in progress):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
-> reports from one or more repos (repeatable `--repo` or a `--config` file) into dedup'd monthly
-> NDJSON partitions, in parallel with rate-limit backoff. `report` streams those partitions back,
-> aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON);
-> `dashboard` renders the same ranking as a self-contained HTML monitor; `compact` zstd-compresses
-> closed months; `doctor` diagnoses a repo's report setup. Next: the tier-2 artifact sniff fallback.
+> **Status (v1 feature-complete, M1–M5):** `collect` ingests **JUnit**, **Playwright blob**, and
+> **mochawesome** reports from one or more repos (repeatable `--repo` or a `--config` file) into
+> dedup'd monthly NDJSON partitions, in parallel with rate-limit backoff, and falls back to sniffing
+> unnamed artifacts (under `--max-artifact-mb`) when a run has no name match. `report` streams those
+> partitions back, aggregates per-test flake signals, scores them, and prints a ranked terminal table
+> (or JSON); `dashboard` renders the same ranking as a self-contained HTML monitor; `compact`
+> zstd-compresses closed months; `doctor` diagnoses a repo's report setup.
 
 ## License
 

@@ -65,10 +65,13 @@ The `collect` command currently authenticates (single Octokit transport, token c
 [D8](decisions.md#d8--auth-one-transport-pluggable-token-resolution)), loads state, computes
 the collection window (watermark / `--hours-back` / 72h default), lists workflow runs since
 that window, classifies them into completed vs. pending, and for the completed runs performs
-tiered artifact discovery ([D9](decisions.md#d9--artifact-discovery-tiered) tiers 1–2): list
-artifact names/sizes, then download the report-glob matches and extract them into a temp dir.
-Expired artifacts are counted, never silently dropped. `--dry-run` lists and partitions
-without downloading. The tier-3 sniff fallback is deferred to M5.
+tiered artifact discovery ([D9](decisions.md#d9--artifact-discovery-tiered)): list
+artifact names/sizes (tier 1), download the report-glob matches and extract them into a temp dir
+(tier 2), and — only when a run has *no* name match — download and extract its remaining artifacts
+under `--max-artifact-mb` (default 100) so a report uploaded under an unexpected name is still found
+(tier 3); the parse step's content sniff discards anything that is not a report, and oversized
+candidates are counted, never silently dropped. Expired artifacts are likewise counted.
+`--dry-run` lists and partitions without downloading.
 
 Blob artifacts are double-zipped (the artifact zip holds `report-*.zip` which holds the report),
 so extraction recurses one nested level to surface the inner file. Runs are fetched in parallel
@@ -119,8 +122,8 @@ de-duplicated. The repos share one client, state file, and data dir and are coll
 sequence; state is keyed per repo (its own watermark), and is saved after each repo so a crash
 partway through keeps the repos already collected (D12, extended across the loop).
 
-The **M1 walking skeleton** is complete (idempotent end-to-end). **M2 is complete**: the
-Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency,
-transport-level rate-limit backoff, and multi-repo config have all landed. **M3 is complete**:
-the `report` command streams the partitions, aggregates per-test flake signals, scores them,
-and prints a ranked table (or `--json`). Next is M4 (HTML dashboard + `compact`).
+The collector is **v1 feature-complete (M1–M5)**. M1 was the idempotent walking skeleton; M2 added
+the Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency,
+transport-level rate-limit backoff, and multi-repo config; M3 the streaming aggregation, flake
+score, and `report` command; M4 the HTML `dashboard` and zstd `compact`; M5 the `doctor` command
+and the tier-3 sniff fallback above.

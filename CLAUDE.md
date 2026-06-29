@@ -99,8 +99,13 @@ The `doctor` command (`src/commands/doctor.ts`) is the onboarding path: it inspe
 recent runs for report-looking artifacts and, if none, prints the exact reporter + `upload-artifact`
 YAML fix for the detected framework. The diagnosis is pure (`src/doctor/diagnose.ts`: `detectFramework`
 from `package.json` deps / a Java build file, then a `FRAMEWORK → fix` table) over signals gathered
-by the command via the GitHub contents API (`src/github/contents.ts`, integration). M1–M4 are
-complete; **M5 is in progress** (`doctor` landed; the tier-2 artifact-sniff fallback is next).
+by the command via the GitHub contents API (`src/github/contents.ts`, integration).
+
+Tier-3 artifact discovery (D9) lives in `fetchRun` (`src/artifacts/fetch.ts`): when a run has *no*
+report-name match, its remaining artifacts under `--max-artifact-mb` (default 100) are downloaded
+and extracted too, and the parse step's content sniff keeps only the real reports — so a report
+uploaded under an unexpected name is still collected. Oversized sniff candidates are counted and
+surfaced, never silently dropped. The whole v1 plan (**M1–M5**) is now feature-complete.
 
 Because `doctor` probes for maybe-absent files (`pom.xml`, …), `createGitHubClient` installs a
 `quietLog` that drops the bundled request-log plugin's automatic `… - 404 with id …` line (the
