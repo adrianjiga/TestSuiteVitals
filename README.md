@@ -159,12 +159,26 @@ With no `--repo`, every repo in the data directory is compacted. Each closed mon
 transparently, so compaction is invisible to the rest of the tool. It is idempotent — re-running
 compacts only what is new.
 
-> **Status (M4 complete):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
+### Doctor
+
+Not sure a repo is set up for collection? `doctor` inspects its recent runs and tells you whether
+it uploads parseable test reports — and if not, prints the exact reporter + `upload-artifact` fix
+for the detected framework:
+
+```bash
+suitevitals doctor --repo <owner/name>
+```
+
+It detects the framework from the repo's manifests (Playwright, Cypress, Vitest, Jest, Mocha, or
+Java/JUnit) and either confirms collection will work or hands you copy-pasteable YAML to make it
+work. This is the zero-to-collecting onboarding path.
+
+> **Status (M5 in progress):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
 > reports from one or more repos (repeatable `--repo` or a `--config` file) into dedup'd monthly
 > NDJSON partitions, in parallel with rate-limit backoff. `report` streams those partitions back,
 > aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON);
 > `dashboard` renders the same ranking as a self-contained HTML monitor; `compact` zstd-compresses
-> closed months. Next: M5 (tier-2 artifact sniff + `doctor`).
+> closed months; `doctor` diagnoses a repo's report setup. Next: the tier-2 artifact sniff fallback.
 
 ## License
 

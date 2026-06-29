@@ -93,7 +93,18 @@ reader (`read.ts`) and append-dedup (`ndjson.ts`) read either form transparently
 compact writes the new `.zst` to a temp file, atomically renames it, then removes the raw
 `.ndjson`; if both forms coexist for a month (a crash window, or a late backfill into a compacted
 month) the reader dedups by key per month so nothing double-counts, and a later `compact` merges
-them back into one `.zst`. M1–M4 are complete; M5 (tier-2 sniff + `doctor`) is next.
+them back into one `.zst`.
+
+The `doctor` command (`src/commands/doctor.ts`) is the onboarding path: it inspects a repo's
+recent runs for report-looking artifacts and, if none, prints the exact reporter + `upload-artifact`
+YAML fix for the detected framework. The diagnosis is pure (`src/doctor/diagnose.ts`: `detectFramework`
+from `package.json` deps / a Java build file, then a `FRAMEWORK → fix` table) over signals gathered
+by the command via the GitHub contents API (`src/github/contents.ts`, integration). M1–M4 are
+complete; **M5 is in progress** (`doctor` landed; the tier-2 artifact-sniff fallback is next).
+
+Because `doctor` probes for maybe-absent files (`pom.xml`, …), `createGitHubClient` installs a
+`quietLog` that drops the bundled request-log plugin's automatic `… - 404 with id …` line (the
+error still throws and is handled); real rate-limit warnings are untouched.
 
 Terminal color lives in `src/colors.ts`: a semantic `Palette` (heading/repo/dim/good/warn/bad/
 score/signal) built over picocolors. `createPalette(enabled)` returns a no-op palette when
