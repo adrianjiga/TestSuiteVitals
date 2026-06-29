@@ -6,6 +6,7 @@ import {
   type ArtifactFetcher,
   type ArtifactFetchSummary,
   DEFAULT_CONCURRENCY,
+  DEFAULT_MAX_ARTIFACT_MB,
   fetchReportArtifacts,
 } from "../artifacts/fetch.js";
 import { type CollectTarget, loadConfig, resolveTargets } from "../collect/config.js";
@@ -31,6 +32,7 @@ interface SharedOptions {
   dataDir: string;
   dryRun: boolean;
   fullErrors: boolean;
+  maxArtifactMb: number | undefined;
   now: Date;
   palette: Palette;
 }
@@ -89,10 +91,15 @@ export const collectCommand = defineCommand({
       type: "string",
       description: `Number of runs to fetch in parallel (default ${DEFAULT_CONCURRENCY})`,
     },
+    "max-artifact-mb": {
+      type: "string",
+      description: `Size cap for sniffing unnamed report artifacts (default ${DEFAULT_MAX_ARTIFACT_MB})`,
+    },
   },
   async run({ args, rawArgs }) {
     const hoursBack = parseHoursBack(args["hours-back"]);
     const concurrency = parseConcurrency(args.concurrency);
+    const maxArtifactMb = parseMaxArtifactMb(args["max-artifact-mb"]);
     const palette = createPalette(colorSupported);
 
     const config = args.config ? await loadConfig(args.config) : undefined;
@@ -116,6 +123,7 @@ export const collectCommand = defineCommand({
       dataDir: args["data-dir"],
       dryRun: args["dry-run"],
       fullErrors: args["full-errors"],
+      maxArtifactMb,
       now,
       palette,
     };
@@ -185,6 +193,7 @@ async function collectRepo(
         dryRun: shared.dryRun,
         onProgress: (done, total) => reportProgress(done, total, p),
         concurrency: target.concurrency,
+        ...(shared.maxArtifactMb !== undefined ? { maxArtifactMb: shared.maxArtifactMb } : {}),
       },
     );
     printArtifactSummary(summary, shared.dryRun, p);
@@ -259,10 +268,23 @@ function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean, p:
         (dryRun ? "." : `, extracted ${summary.filesExtracted} file(s).`),
     ),
   );
+  if (summary.sniffedArtifacts > 0) {
+    const verb2 = dryRun ? "would sniff" : "sniffed";
+    console.log(
+      p.dim(`    ${verb2} ${summary.sniffedArtifacts} unnamed artifact(s) for reports (tier 3).`),
+    );
+  }
   if (summary.expiredArtifacts > 0) {
     console.log(
       p.warn(
         `    ${summary.expiredArtifacts} expired artifact(s) across ${summary.runsWithExpired} run(s) (retention elapsed).`,
+      ),
+    );
+  }
+  if (summary.oversizedArtifacts > 0) {
+    console.log(
+      p.warn(
+        `    ${summary.oversizedArtifacts} artifact(s) skipped for exceeding --max-artifact-mb.`,
       ),
     );
   }
@@ -347,6 +369,18 @@ function parseConcurrency(value: string | undefined): number | undefined {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1) {
     throw new Error(`Invalid --concurrency "${value}": expected a positive integer.`);
+  }
+  return n;
+}
+
+/** Parses and validates `--max-artifact-mb`; returns undefined to use the default. */
+function parseMaxArtifactMb(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`Invalid --max-artifact-mb "${value}": expected a positive number.`);
   }
   return n;
 }
