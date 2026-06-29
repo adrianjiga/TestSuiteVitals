@@ -1,6 +1,7 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { TestEvent } from "../events/event.js";
+import { readPartitionText } from "./compress.js";
 import { dedupKey } from "./dedup.js";
 import { partitionMonth, partitionPath } from "./partition.js";
 
@@ -63,24 +64,31 @@ function groupByMonth(events: TestEvent[]): Map<string, TestEvent[]> {
   return groups;
 }
 
-/** Reads the dedup keys already present in a partition; a missing file yields an empty set. */
+/**
+ * Reads the dedup keys already present for a month, from both the uncompressed partition and a
+ * compacted `.ndjson.zst` sibling (D2) if present — so a late backfill into a compacted month is
+ * still deduped. Missing files yield no keys.
+ */
 async function readExistingKeys(path: string): Promise<Set<string>> {
+  const keys = new Set<string>();
+  await addKeysFrom(path, keys);
+  await addKeysFrom(`${path}.zst`, keys);
+  return keys;
+}
+
+async function addKeysFrom(path: string, keys: Set<string>): Promise<void> {
   let raw: string;
   try {
-    raw = await readFile(path, "utf8");
+    raw = await readPartitionText(path);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return new Set();
+      return;
     }
     throw error;
   }
-
-  const keys = new Set<string>();
   for (const line of raw.split("\n")) {
-    if (line.trim().length === 0) {
-      continue;
+    if (line.trim().length > 0) {
+      keys.add(dedupKey(JSON.parse(line) as TestEvent));
     }
-    keys.add(dedupKey(JSON.parse(line) as TestEvent));
   }
-  return keys;
 }

@@ -153,3 +153,5 @@ Thumbs.db
 # Suitevitals runtime output
 data/
 state.json
+# Generated dashboards (default output is <owner>__<repo>.html)
+*.html

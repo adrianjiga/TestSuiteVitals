@@ -83,8 +83,17 @@ The `dashboard` command (`src/commands/dashboard.ts`) renders the same `read →
 pipeline as a self-contained HTML file (`src/report/dashboard.ts` — inline CSS, zero runtime deps):
 a dark "vital signs" monitor, one row per test with a heartbeat sparkline. The sparkline needs a
 per-test time-ordered outcome list, so the `Aggregator` takes an opt-in `timeline` flag (off for
-`report`, so it pays no memory cost) that records a `RunOutcome[]` sorted by run start. M1–M3 are
-complete; M4 is in progress (dashboard landed; `compact` is next).
+`report`, so it pays no memory cost) that records a `RunOutcome[]` sorted by run start.
+
+The `compact` command (`src/commands/compact.ts` → `src/store/compact.ts`) zstd-compresses closed
+months (D2): each `<YYYY-MM>.ndjson` becomes `<YYYY-MM>.ndjson.zst`, the current month stays
+uncompressed for cheap appends. The compression chokepoint is `src/store/compress.ts`
+(`@mongodb-js/zstd`, native but with prebuilt binaries so it runs on the Node-22 dev floor). The
+reader (`read.ts`) and append-dedup (`ndjson.ts`) read either form transparently. Crash safety:
+compact writes the new `.zst` to a temp file, atomically renames it, then removes the raw
+`.ndjson`; if both forms coexist for a month (a crash window, or a late backfill into a compacted
+month) the reader dedups by key per month so nothing double-counts, and a later `compact` merges
+them back into one `.zst`. M1–M4 are complete; M5 (tier-2 sniff + `doctor`) is next.
 
 Terminal color lives in `src/colors.ts`: a semantic `Palette` (heading/repo/dim/good/warn/bad/
 score/signal) built over picocolors. `createPalette(enabled)` returns a no-op palette when
