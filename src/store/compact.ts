@@ -1,7 +1,9 @@
 import { readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { compress } from "@mongodb-js/zstd";
+import type { TestEvent } from "../events/event.js";
 import { NDJSON_EXT, partitionFileMonth, readPartitionText, ZSTD_EXT } from "./compress.js";
+import { dedupKey } from "./dedup.js";
 import { repoDir } from "./partition.js";
 
 /** zstd level: high ratio is worth the CPU since closed months are written once (D2). */
@@ -62,13 +64,10 @@ export async function compactRepo(
     }
 
     let bytesBefore = 0;
-    let text = "";
     for (const file of files) {
-      const path = join(dir, file);
-      bytesBefore += (await stat(path)).size;
-      const part = await readPartitionText(path);
-      text += part.length === 0 || part.endsWith("\n") ? part : `${part}\n`;
+      bytesBefore += (await stat(join(dir, file))).size;
     }
+    const text = await mergeMonth(dir, files);
 
     const compressed = await compress(Buffer.from(text, "utf8"), ZSTD_LEVEL);
     const finalPath = join(dir, `${month}${ZSTD_EXT}`);
@@ -81,6 +80,38 @@ export async function compactRepo(
   }
 
   return results;
+}
+
+/**
+ * The text to compress for a month. A single partition was already deduped at append time, so it
+ * passes through unparsed (the common, fast path). When more than one form exists for the month — a
+ * crash mid-compaction or a late backfill leaving a `.ndjson` beside the `.ndjson.zst` — the lines
+ * are deduped by key so the merge never bakes in duplicates that the reader could no longer catch
+ * (it only dedups a month while two files coexist). The first occurrence of a key wins, matching
+ * the reader, and the original line bytes are emitted verbatim.
+ */
+async function mergeMonth(dir: string, files: string[]): Promise<string> {
+  if (files.length === 1) {
+    const only = await readPartitionText(join(dir, files[0] as string));
+    return only.length === 0 || only.endsWith("\n") ? only : `${only}\n`;
+  }
+
+  const seen = new Set<string>();
+  const lines: string[] = [];
+  for (const file of [...files].sort()) {
+    const raw = await readPartitionText(join(dir, file));
+    for (const line of raw.split("\n")) {
+      if (line.trim().length === 0) {
+        continue;
+      }
+      const key = dedupKey(JSON.parse(line) as TestEvent);
+      if (!seen.has(key)) {
+        seen.add(key);
+        lines.push(line);
+      }
+    }
+  }
+  return lines.length > 0 ? `${lines.join("\n")}\n` : "";
 }
 
 /** Lists the repo slugs that have a partition directory under `dataDir`. */

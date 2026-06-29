@@ -70,6 +70,22 @@ describe("compactRepo", () => {
     expect(events.map((e) => e.run.run_id).sort()).toEqual([1, 2]);
   });
 
+  it("dedups overlapping lines when merging both forms (crash mid-compaction)", async () => {
+    // The .zst is renamed in, then a crash hits before the raw .ndjson is removed, so both
+    // forms exist with the SAME lines. Merging them must not double-count.
+    await writeFile(join(dir, "2026-04.ndjson"), `${line(1)}\n${line(2)}\n`);
+    await compactRepo(dataDir, "owner/repo", "2026-06");
+    await writeFile(join(dir, "2026-04.ndjson"), `${line(1)}\n${line(2)}\n`);
+
+    await compactRepo(dataDir, "owner/repo", "2026-06");
+
+    expect((await readdir(dir)).sort()).toEqual(["2026-04.ndjson.zst"]);
+    const text = await readPartitionText(join(dir, "2026-04.ndjson.zst"));
+    expect(text.trimEnd().split("\n")).toHaveLength(2);
+    const events = await collect(readRepoEvents(dataDir, "owner/repo"));
+    expect(events.map((e) => e.run.run_id).sort()).toEqual([1, 2]);
+  });
+
   it("returns nothing for a repo with no partition directory", async () => {
     expect(await compactRepo(dataDir, "owner/missing", "2026-06")).toEqual([]);
   });
