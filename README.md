@@ -7,7 +7,7 @@ you already upload and tells you which tests are flaky, how badly, and where.
 No server, no instrumentation changes — point it at a GitHub repo, and it
 normalizes the test-report artifacts into plain files you own.
 
-> **Status:** early development (M3 complete — collector + flake report). Not yet published to npm.
+> **Status:** early development (M4 complete — collector, report, dashboard, compact). Not yet published to npm.
 
 ## Documentation
 
@@ -145,11 +145,26 @@ suitevitals dashboard --repo <owner/name> [-o out.html] [--by-matrix] [--min-run
 The output is a single HTML file with inline CSS and no runtime dependencies — open it, screenshot
 it, commit it, or host it anywhere.
 
-> **Status (M4 in progress):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
+### Compact
+
+Closed months never change, so they can be compressed to reclaim disk (roughly 10× on JSON; the
+current month stays uncompressed for cheap appends):
+
+```bash
+suitevitals compact [--repo <owner/name>] [--data-dir <path>]
+```
+
+With no `--repo`, every repo in the data directory is compacted. Each closed month's
+`<YYYY-MM>.ndjson` becomes `<YYYY-MM>.ndjson.zst`; `report` and `dashboard` read either form
+transparently, so compaction is invisible to the rest of the tool. It is idempotent — re-running
+compacts only what is new.
+
+> **Status (M4 complete):** `collect` ingests **JUnit**, **Playwright blob**, and **mochawesome**
 > reports from one or more repos (repeatable `--repo` or a `--config` file) into dedup'd monthly
 > NDJSON partitions, in parallel with rate-limit backoff. `report` streams those partitions back,
 > aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON);
-> `dashboard` renders the same ranking as a self-contained HTML monitor. Next: `compact` (zstd).
+> `dashboard` renders the same ranking as a self-contained HTML monitor; `compact` zstd-compresses
+> closed months. Next: M5 (tier-2 artifact sniff + `doctor`).
 
 ## License
 

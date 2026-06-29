@@ -51,7 +51,9 @@ silently.
 - `suitevitals dashboard` — **implemented**: renders the same ranking as a self-contained
   HTML "vital signs" monitor (inline CSS, zero runtime deps), one row per test with a heartbeat
   sparkline of recent run outcomes.
-- `suitevitals compact` — zstd closed months ([D2](decisions.md#d2--compression-zstd-on-closed-months)).
+- `suitevitals compact` — **implemented**: zstd-compresses closed months
+  ([D2](decisions.md#d2--compression-zstd-on-closed-months)); the reader and append-dedup read
+  `.ndjson.zst` transparently, so it is invisible to the rest of the tool.
 - `suitevitals doctor <repo>` — inspects workflows; if no report artifacts are uploaded,
   prints the exact reporter + `upload-artifact` YAML fix for the detected framework.
 
