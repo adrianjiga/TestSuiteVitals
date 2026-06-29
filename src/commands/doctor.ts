@@ -1,0 +1,116 @@
+import { defineCommand } from "citty";
+import { colorSupported, createPalette, type Palette } from "../colors.js";
+import { type Diagnosis, diagnose, type RepoSignals } from "../doctor/diagnose.js";
+import { listRunArtifacts } from "../github/artifacts.js";
+import { AuthError } from "../github/auth.js";
+import { createGitHubClient, type GitHubClient } from "../github/client.js";
+import { getRepoFile, repoHasFile } from "../github/contents.js";
+import { parseRepoRef, type RepoRef, repoSlug } from "../github/repo.js";
+import { classifyRuns, listRunsSince } from "../github/runs.js";
+
+/** How many recent completed runs to inspect for uploaded artifacts. */
+const RUNS_TO_INSPECT = 10;
+/** How far back to look for runs. */
+const LOOKBACK_DAYS = 30;
+/** Java build files that imply JUnit-format reports. */
+const JAVA_BUILD_FILES = ["pom.xml", "build.gradle", "build.gradle.kts"];
+
+export const doctorCommand = defineCommand({
+  meta: {
+    name: "doctor",
+    description: "Check whether a repo uploads parseable test reports, and how to fix it if not",
+  },
+  args: {
+    repo: {
+      type: "string",
+      description: "Repository to inspect, as owner/name",
+      required: true,
+    },
+    token: {
+      type: "string",
+      description: "GitHub token (overrides GITHUB_TOKEN and the gh CLI)",
+    },
+  },
+  async run({ args }) {
+    const palette = createPalette(colorSupported);
+    const ref = parseRepoRef(args.repo);
+    const slug = repoSlug(ref);
+
+    const client = await authenticate(args.token, palette);
+    if (!client) {
+      return;
+    }
+
+    console.log(`Inspecting ${palette.repo(slug)}…`);
+    const signals = await gatherSignals(client, ref);
+    const result = diagnose(signals);
+    printDiagnosis(slug, signals, result, palette);
+  },
+});
+
+/** Reads the recent runs' artifact names and the repo's manifests into {@link RepoSignals}. */
+async function gatherSignals(client: GitHubClient, ref: RepoRef): Promise<RepoSignals> {
+  const { octokit } = client;
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const { completed } = classifyRuns(await listRunsSince(octokit, ref, since));
+
+  const artifactNames = new Set<string>();
+  for (const run of completed.slice(0, RUNS_TO_INSPECT)) {
+    for (const artifact of await listRunArtifacts(octokit, ref, run.run_id)) {
+      artifactNames.add(artifact.name);
+    }
+  }
+
+  const packageJson = (await getRepoFile(octokit, ref, "package.json")) ?? undefined;
+  const hasJavaBuild = await repoHasFile(octokit, ref, JAVA_BUILD_FILES);
+
+  return { artifactNames: [...artifactNames], packageJson, hasJavaBuild };
+}
+
+function printDiagnosis(slug: string, signals: RepoSignals, result: Diagnosis, p: Palette): void {
+  console.log(
+    `  Framework: ${result.framework === "unknown" ? p.dim("unknown") : result.framework}`,
+  );
+  console.log(`  Artifacts seen: ${signals.artifactNames.length || p.dim("none")}`);
+
+  if (result.uploadsReports) {
+    console.log(
+      p.good(`\n✓ ${slug} uploads parseable reports: ${result.matchedArtifacts.join(", ")}.`),
+    );
+    console.log(`  Run \`suitevitals collect --repo ${slug}\` to start collecting.`);
+    return;
+  }
+
+  console.log(p.warn(`\n⚠ ${slug} uploads no parseable test reports.`));
+  const fix = result.fix;
+  if (!fix) {
+    return;
+  }
+  console.log(`\n  ${p.heading(fix.summary)}`);
+  for (const step of fix.steps) {
+    console.log(`  ${p.dim(step)}`);
+  }
+  console.log("");
+  for (const line of fix.yaml.split("\n")) {
+    console.log(`    ${p.dim(line)}`);
+  }
+}
+
+/** Resolves the client; on auth failure reports it, sets exit code, returns null. */
+async function authenticate(
+  token: string | undefined,
+  palette: Palette,
+): Promise<GitHubClient | null> {
+  try {
+    const client = await createGitHubClient({ token });
+    console.log(palette.dim(`Authenticated with GitHub (token source: ${client.tokenSource}).`));
+    return client;
+  } catch (error) {
+    if (error instanceof AuthError) {
+      console.error(palette.bad(error.message));
+      process.exitCode = 1;
+      return null;
+    }
+    throw error;
+  }
+}

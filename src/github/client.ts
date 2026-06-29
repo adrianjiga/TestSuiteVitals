@@ -34,6 +34,7 @@ export async function createGitHubClient(options: ResolveTokenOptions = {}): Pro
   const octokit = new SuitevitalsOctokit({
     auth: token,
     userAgent: USER_AGENT,
+    log: quietLog(),
     throttle: {
       onRateLimit: (retryAfter, requestOptions, _octokit, retryCount) => {
         console.warn(
@@ -52,4 +53,25 @@ export async function createGitHubClient(options: ResolveTokenOptions = {}): Pro
     },
   });
   return { octokit, tokenSource: source };
+}
+
+/**
+ * Octokit's default logger, minus the bundled request-log plugin's automatic per-request error
+ * line (`GET <url> - 404 with id …`). That line merely duplicates the thrown error and turns
+ * expected 404s — e.g. `doctor` probing for a maybe-absent `pom.xml` — into console noise; the
+ * error itself still propagates and is handled by the caller. Real rate-limit warnings (emitted
+ * via `console.warn` in the throttle callbacks) are untouched.
+ */
+function quietLog() {
+  return {
+    debug: () => {},
+    info: () => {},
+    warn: (message: string, ...args: unknown[]) => console.warn(message, ...args),
+    error: (message: string, ...args: unknown[]) => {
+      if (/ - \d{3} with id /.test(message)) {
+        return;
+      }
+      console.error(message, ...args);
+    },
+  };
 }

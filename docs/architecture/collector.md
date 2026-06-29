@@ -54,8 +54,10 @@ silently.
 - `suitevitals compact` — **implemented**: zstd-compresses closed months
   ([D2](decisions.md#d2--compression-zstd-on-closed-months)); the reader and append-dedup read
   `.ndjson.zst` transparently, so it is invisible to the rest of the tool.
-- `suitevitals doctor <repo>` — inspects workflows; if no report artifacts are uploaded,
-  prints the exact reporter + `upload-artifact` YAML fix for the detected framework.
+- `suitevitals doctor --repo <owner/name>` — **implemented**: inspects recent runs; if no report
+  artifacts are uploaded, detects the framework from the repo's manifests and prints the exact
+  reporter + `upload-artifact` YAML fix. Pure diagnosis (`src/doctor/diagnose.ts`) over signals
+  gathered from the GitHub API.
 
 ## Implementation status
 
