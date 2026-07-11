@@ -30,11 +30,15 @@ silently.
 3. **Classify** — completed → collect; in-progress/queued → `pending_runs`; the watermark does
    not advance past them.
 4. **Fetch artifacts** (tiered, [D9](decisions.md#d9--artifact-discovery-tiered)) into a temp
-   dir; expired artifacts are counted and reported.
+   dir; expired artifacts are counted and reported. Extraction enforces a decompressed-size
+   budget (default 500 MB, checked from the zip's declared entry sizes *before* inflating), so
+   a zip bomb is counted as oversized and skipped, never inflated.
 5. **Adapter dispatch** by sniffing extracted files: `<testsuites>` root → JUnit; JSON with
    `config` + `suites` → Playwright; JSON with `stats` + `results` → Mochawesome. A per-repo
    config override wins over sniffing.
-6. **Normalize & append** events with dedup; update state only after the append succeeds.
+6. **Normalize & append** events with dedup; the append is fsynced, and state is updated only
+   after it succeeds. A single-writer lock (`<state-file>.lock`) rejects a concurrent collect
+   on the same state file, so the read-keys → append sequence never races itself.
 7. **Concurrency & rate limits** — one `p-limit` pool (default 5, `--concurrency`) fetches runs
    in parallel. Backoff is handled at the transport by GitHub's official `@octokit/plugin-throttling`
    (honors primary/secondary rate-limit headers and `Retry-After`, waits then retries up to 3×) and
@@ -53,7 +57,10 @@ silently.
   sparkline of recent run outcomes.
 - `suitevitals compact` — **implemented**: zstd-compresses closed months
   ([D2](decisions.md#d2--compression-zstd-on-closed-months)); the reader and append-dedup read
-  `.ndjson.zst` transparently, so it is invisible to the rest of the tool.
+  `.ndjson.zst` transparently, so it is invisible to the rest of the tool. When a month exists
+  in both forms (crash mid-compaction, late backfill), the merge de-duplicates by key — the
+  reader's both-forms dedup only holds while two files coexist, so the merge must bake in no
+  duplicates.
 - `suitevitals doctor --repo <owner/name>` — **implemented**: inspects recent runs; if no report
   artifacts are uploaded, detects the framework from the repo's manifests and prints the exact
   reporter + `upload-artifact` YAML fix. Pure diagnosis (`src/doctor/diagnose.ts`) over signals
@@ -121,6 +128,17 @@ most-specific-wins: per-repo value → CLI flag → config default → built-in;
 de-duplicated. The repos share one client, state file, and data dir and are collected in
 sequence; state is keyed per repo (its own watermark), and is saved after each repo so a crash
 partway through keeps the repos already collected (D12, extended across the loop).
+
+A hardening pass (2026-07-11) closed the robustness gaps a security scan surfaced: extraction
+enforces the decompressed-size budget above (zip bombs are counted as oversized, never inflated);
+redaction ([D6](decisions.md#d6--error-storage-redacted--truncated-by-default)) also covers
+`user:pass@` URL credentials, bare JWTs, and PEM private-key blocks; a malformed partition line
+is warn-and-skipped on read, append, and compact (compact keeps unparseable lines verbatim —
+it deletes its sources, so it must never drop what it cannot parse) instead of failing the repo;
+appends fsync before the watermark advances, making the
+[D12](decisions.md#d12--crash-safety--idempotency) "durable append" literal; `collect` takes a
+`<state-file>.lock` single-writer lock; repo refs reject `.`/`..` segments; and `doctor`
+tolerates >1 MB manifests (the contents API returns `encoding: "none"` for those).
 
 The collector is **v1 feature-complete (M1–M5)**. M1 was the idempotent walking skeleton; M2 added
 the Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency,
