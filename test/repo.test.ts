@@ -24,6 +24,11 @@ describe("parseRepoRef", () => {
     "a/b/c",
     "own er/name",
     "owner/na me",
+    // Path-semantics segments: GitHub never issues these, and they feed data/ paths (F7).
+    "../name",
+    "owner/..",
+    "./name",
+    "owner/.",
   ])("rejects %j", (value) => {
     expect(() => parseRepoRef(value)).toThrow(/owner\/name/);
   });
