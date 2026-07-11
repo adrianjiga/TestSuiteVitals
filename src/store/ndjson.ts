@@ -1,5 +1,7 @@
+import { createReadStream } from "node:fs";
 import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
+import { createInterface } from "node:readline";
 import type { TestEvent } from "../events/event.js";
 import { readPartitionText } from "./compress.js";
 import { dedupKey } from "./dedup.js";
@@ -85,22 +87,42 @@ async function readExistingKeys(path: string): Promise<Set<string>> {
 }
 
 async function addKeysFrom(path: string, keys: Set<string>): Promise<void> {
-  let raw: string;
   try {
-    raw = await readPartitionText(path);
+    if (path.endsWith(".zst")) {
+      // zstd decompresses whole-buffer, so a compacted sibling is read in one piece.
+      addKeysFromText(await readPartitionText(path), path, keys);
+      return;
+    }
+    // The uncompressed partition — the current month, hit on every append — is streamed line
+    // by line so the key scan never materializes the whole month (F8 / D3).
+    const lines = createInterface({
+      input: createReadStream(path),
+      crlfDelay: Number.POSITIVE_INFINITY,
+    });
+    for await (const line of lines) {
+      addKeyFromLine(line, path, keys);
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return;
     }
     throw error;
   }
+}
+
+function addKeysFromText(raw: string, path: string, keys: Set<string>): void {
   for (const line of raw.split("\n")) {
-    if (line.trim().length > 0) {
-      const event = parseEventLine(line, path);
-      if (event) {
-        keys.add(dedupKey(event));
-      }
-    }
+    addKeyFromLine(line, path, keys);
+  }
+}
+
+function addKeyFromLine(line: string, path: string, keys: Set<string>): void {
+  if (line.trim().length === 0) {
+    return;
+  }
+  const event = parseEventLine(line, path);
+  if (event) {
+    keys.add(dedupKey(event));
   }
 }
 
