@@ -1,14 +1,28 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, normalize, sep } from "node:path";
-import { unzipSync } from "fflate";
+import { type UnzipFileInfo, unzipSync } from "fflate";
+
+/** Default ceiling (MB) on a single archive's *decompressed* size — a zip-bomb / OOM guard (F1). */
+export const DEFAULT_MAX_EXTRACT_MB = 500;
+
+/** Thrown when an archive's declared uncompressed size exceeds the extraction budget. */
+export class ArchiveTooLargeError extends Error {
+  override name = "ArchiveTooLargeError";
+}
 
 /**
- * Extracts a zip archive's bytes into `destDir`, returning the absolute paths of
- * the written files. Directory entries are skipped. Entry paths are validated to
- * stay within `destDir` so a malicious archive cannot escape via `../` (zip-slip).
+ * Extracts a zip archive's bytes into `destDir`, returning the absolute paths of the written
+ * files. Directory entries are skipped. Entry paths are validated to stay within `destDir` so a
+ * malicious archive cannot escape via `../` (zip-slip). The summed declared uncompressed size is
+ * capped at `maxBytes` and checked *before* each entry is inflated, so a zip bomb is rejected
+ * (with {@link ArchiveTooLargeError}) rather than exhausting memory (F1).
  */
-export async function extractZip(zip: Uint8Array, destDir: string): Promise<string[]> {
-  const entries = unzipSync(zip);
+export async function extractZip(
+  zip: Uint8Array,
+  destDir: string,
+  maxBytes = DEFAULT_MAX_EXTRACT_MB * 1024 * 1024,
+): Promise<string[]> {
+  const entries = unzipSync(zip, { filter: budgetFilter(maxBytes) });
   const written: string[] = [];
 
   for (const [name, bytes] of Object.entries(entries)) {
@@ -30,14 +44,16 @@ export async function extractZip(zip: Uint8Array, destDir: string): Promise<stri
  * Like {@link extractZip}, but also extracts nested zip archives up to `maxDepth` levels,
  * returning the leaf (non-zip) file paths. Playwright blob reports are double-zipped — the
  * artifact zip holds a `report-*.zip` which holds `report.jsonl` — so one nested level is
- * needed to surface the report. A nested entry that fails to unzip is kept as-is.
+ * needed to surface the report. A nested entry that fails to unzip is kept as-is; a nested
+ * entry that blows the extraction budget rethrows, since the whole artifact is hostile.
  */
 export async function extractZipNested(
   zip: Uint8Array,
   destDir: string,
   maxDepth = 2,
+  maxBytes = DEFAULT_MAX_EXTRACT_MB * 1024 * 1024,
 ): Promise<string[]> {
-  const written = await extractZip(zip, destDir);
+  const written = await extractZip(zip, destDir, maxBytes);
   if (maxDepth <= 1) {
     return written;
   }
@@ -51,14 +67,41 @@ export async function extractZipNested(
     try {
       const bytes = await readFile(file);
       leaves.push(
-        ...(await extractZipNested(new Uint8Array(bytes), `${file}.extracted`, maxDepth - 1)),
+        ...(await extractZipNested(
+          new Uint8Array(bytes),
+          `${file}.extracted`,
+          maxDepth - 1,
+          maxBytes,
+        )),
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof ArchiveTooLargeError) {
+        throw error;
+      }
       // Not a readable zip; keep the file so nothing is silently lost.
       leaves.push(file);
     }
   }
   return leaves;
+}
+
+/**
+ * A fflate entry filter that accumulates each entry's *declared* uncompressed size and throws
+ * once the sum exceeds `maxBytes` — before the offending entry is inflated, so a zip bomb never
+ * allocates its payload. (A crafted header could understate its size; the declared size catches
+ * every realistic bomb and all accidental-OOM cases.)
+ */
+function budgetFilter(maxBytes: number): (file: UnzipFileInfo) => boolean {
+  let total = 0;
+  return (file) => {
+    total += file.originalSize;
+    if (total > maxBytes) {
+      throw new ArchiveTooLargeError(
+        `Archive expands past the ${Math.round(maxBytes / (1024 * 1024))} MB extraction budget; refusing to inflate.`,
+      );
+    }
+    return true;
+  };
 }
 
 /** Joins `name` onto `base`, throwing if the result escapes `base` (zip-slip guard). */

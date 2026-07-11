@@ -284,7 +284,7 @@ function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean, p:
   if (summary.oversizedArtifacts > 0) {
     console.log(
       p.warn(
-        `    ${summary.oversizedArtifacts} artifact(s) skipped for exceeding --max-artifact-mb.`,
+        `    ${summary.oversizedArtifacts} artifact(s) skipped as oversized (--max-artifact-mb or the extraction budget).`,
       ),
     );
   }

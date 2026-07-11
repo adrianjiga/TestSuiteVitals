@@ -194,4 +194,22 @@ describe("fetchReportArtifacts", () => {
     expect(fetcher.download).toHaveBeenCalledTimes(1);
     expect(fetcher.download).toHaveBeenCalledWith(41);
   });
+
+  it("counts a zip bomb as oversized and keeps collecting the run's other artifacts", async () => {
+    // A tiny compressed zip declaring 2 MB uncompressed; extraction budget throws on it. The
+    // GitHub-reported size_bytes is small, so only the extraction-time guard can catch it.
+    const bomb = zipSync({ "huge.bin": new Uint8Array(2 * 1024 * 1024) });
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async () => [artifact(50, "bomb-report"), artifact(51, "junit-report")]),
+      download: vi.fn(async (id: number) => (id === 50 ? bomb : reportZip)),
+    };
+
+    const { summary, reports } = await fetchReportArtifacts(fetcher, [run(1)], workdir, {
+      maxExtractMb: 1,
+    });
+
+    expect(summary.oversizedArtifacts).toBe(1); // the bomb, surfaced not fatal
+    expect(summary.filesExtracted).toBe(1); // the healthy report still landed
+    expect(reports).toHaveLength(1);
+  });
 });

@@ -2,7 +2,7 @@ import { join } from "node:path";
 import pLimit from "p-limit";
 import { type ArtifactMeta, partitionArtifacts } from "../github/artifacts.js";
 import type { WorkflowRun } from "../github/runs.js";
-import { extractZipNested } from "./extract.js";
+import { ArchiveTooLargeError, DEFAULT_MAX_EXTRACT_MB, extractZipNested } from "./extract.js";
 
 /** Default number of runs fetched in parallel; balances throughput against rate limits. */
 export const DEFAULT_CONCURRENCY = 5;
@@ -51,6 +51,8 @@ export interface ArtifactFetchOptions {
   concurrency?: number;
   /** Size ceiling (MB) for tier-3 sniff candidates. Defaults to {@link DEFAULT_MAX_ARTIFACT_MB}. */
   maxArtifactMb?: number;
+  /** Decompressed-size budget (MB) per archive. Defaults to {@link DEFAULT_MAX_EXTRACT_MB}. */
+  maxExtractMb?: number;
 }
 
 /** What one run contributed, computed in isolation so runs can be fetched in parallel. */
@@ -101,15 +103,24 @@ export async function fetchReportArtifacts(
     onProgress,
     concurrency = DEFAULT_CONCURRENCY,
     maxArtifactMb = DEFAULT_MAX_ARTIFACT_MB,
+    maxExtractMb = DEFAULT_MAX_EXTRACT_MB,
   } = options;
   const limit = pLimit(Math.max(1, concurrency));
   const maxArtifactBytes = maxArtifactMb * 1024 * 1024;
+  const maxExtractBytes = maxExtractMb * 1024 * 1024;
 
   let completed = 0;
   const outcomes = await Promise.all(
     runs.map((run) =>
       limit(async () => {
-        const outcome = await fetchRun(fetcher, run, workdir, dryRun, maxArtifactBytes);
+        const outcome = await fetchRun(
+          fetcher,
+          run,
+          workdir,
+          dryRun,
+          maxArtifactBytes,
+          maxExtractBytes,
+        );
         completed++;
         onProgress?.(completed, runs.length);
         return outcome;
@@ -133,6 +144,7 @@ async function fetchRun(
   workdir: string,
   dryRun: boolean,
   maxArtifactBytes: number,
+  maxExtractBytes: number,
 ): Promise<RunOutcome> {
   const artifacts = await fetcher.list(run.run_id);
   const partition = partitionArtifacts(artifacts);
@@ -156,7 +168,17 @@ async function fetchRun(
     for (const artifact of [...partition.reports, ...toSniff]) {
       const zip = await fetcher.download(artifact.id);
       const dest = join(workdir, String(run.run_id), String(artifact.id));
-      files.push(...(await extractZipNested(zip, dest)));
+      try {
+        files.push(...(await extractZipNested(zip, dest, 2, maxExtractBytes)));
+      } catch (error) {
+        // A zip bomb (declared size past the extraction budget) is counted as oversized and
+        // skipped — surfaced in the summary, never allowed to OOM the whole collection (F1).
+        if (error instanceof ArchiveTooLargeError) {
+          oversized++;
+          continue;
+        }
+        throw error;
+      }
     }
   }
 
