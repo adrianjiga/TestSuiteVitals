@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestEvent } from "../src/events/event.js";
 import { appendEvents } from "../src/store/ndjson.js";
 import { partitionPath } from "../src/store/partition.js";
@@ -69,6 +69,24 @@ describe("appendEvents", () => {
     expect(second).toMatchObject({ written: 0, deduped: 2 });
     const path = partitionPath(dir, "owner/name", "2026-06");
     expect((await readFile(path, "utf8")).trim().split("\n")).toHaveLength(2);
+  });
+
+  it("still appends and dedups when the partition holds a torn line (F4)", async () => {
+    await appendEvents(dir, "owner/name", [event({ id: "a" })]);
+    // A crash mid-write leaves a truncated line at the end of the partition.
+    await appendFile(partitionPath(dir, "owner/name", "2026-06"), '{"id":"tor', "utf8");
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await appendEvents(dir, "owner/name", [
+        event({ id: "a" }), // already stored — must still dedup past the corruption
+        event({ id: "b" }),
+      ]);
+      expect(result).toMatchObject({ written: 1, deduped: 1 });
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("splits events into separate monthly partitions", async () => {

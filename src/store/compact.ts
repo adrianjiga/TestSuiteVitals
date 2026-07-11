@@ -1,9 +1,9 @@
 import { readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { compress } from "@mongodb-js/zstd";
-import type { TestEvent } from "../events/event.js";
 import { NDJSON_EXT, partitionFileMonth, readPartitionText, ZSTD_EXT } from "./compress.js";
 import { dedupKey } from "./dedup.js";
+import { parseEventLine } from "./ndjson.js";
 import { repoDir } from "./partition.js";
 
 /** zstd level: high ratio is worth the CPU since closed months are written once (D2). */
@@ -99,12 +99,20 @@ async function mergeMonth(dir: string, files: string[]): Promise<string> {
   const seen = new Set<string>();
   const lines: string[] = [];
   for (const file of [...files].sort()) {
-    const raw = await readPartitionText(join(dir, file));
+    const path = join(dir, file);
+    const raw = await readPartitionText(path);
     for (const line of raw.split("\n")) {
       if (line.trim().length === 0) {
         continue;
       }
-      const key = dedupKey(JSON.parse(line) as TestEvent);
+      // A line that cannot be keyed (corrupt) is kept verbatim — compaction must never
+      // destroy data it cannot parse; the reader warns and skips such lines (F4).
+      const event = parseEventLine(line, path);
+      if (!event) {
+        lines.push(line);
+        continue;
+      }
+      const key = dedupKey(event);
       if (!seen.has(key)) {
         seen.add(key);
         lines.push(line);

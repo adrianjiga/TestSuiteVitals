@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import type { TestEvent } from "../events/event.js";
 import { partitionFileMonth, readPartitionText } from "../store/compress.js";
 import { dedupKey } from "../store/dedup.js";
+import { parseEventLine } from "../store/ndjson.js";
 import { repoDir } from "../store/partition.js";
 
 /**
@@ -61,13 +62,20 @@ export async function* readRepoEvents(dataDir: string, slug: string): AsyncGener
   }
 }
 
-/** Yields the events in one partition file, streaming `.ndjson` and decompressing `.ndjson.zst`. */
+/**
+ * Yields the events in one partition file, streaming `.ndjson` and decompressing `.ndjson.zst`.
+ * Malformed lines (a torn write, a hand-edit) are skipped with a warning rather than aborting
+ * the whole report (F4).
+ */
 async function* readPartitionFile(path: string): AsyncGenerator<TestEvent> {
   if (path.endsWith(".zst")) {
     const text = await readPartitionText(path);
     for (const line of text.split("\n")) {
       if (line.trim().length > 0) {
-        yield JSON.parse(line) as TestEvent;
+        const event = parseEventLine(line, path);
+        if (event) {
+          yield event;
+        }
       }
     }
     return;
@@ -78,7 +86,10 @@ async function* readPartitionFile(path: string): AsyncGenerator<TestEvent> {
   });
   for await (const line of lines) {
     if (line.trim().length > 0) {
-      yield JSON.parse(line) as TestEvent;
+      const event = parseEventLine(line, path);
+      if (event) {
+        yield event;
+      }
     }
   }
 }
