@@ -19,6 +19,12 @@ export async function getRepoFile(
     });
     const data = response.data;
     if (!Array.isArray(data) && data.type === "file") {
+      // Files over ~1 MB come back with `encoding: "none"` and empty content; treat them as
+      // unreadable rather than crashing on the unknown encoding (F6). Manifests that large
+      // carry no framework signal worth chasing through the blobs API.
+      if (data.encoding !== "base64" && data.encoding !== "utf-8") {
+        return null;
+      }
       return Buffer.from(data.content, data.encoding as BufferEncoding).toString("utf8");
     }
     return null;
