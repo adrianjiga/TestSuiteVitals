@@ -1,5 +1,7 @@
-import { appendFile, mkdir } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { mkdir, open } from "node:fs/promises";
 import { dirname } from "node:path";
+import { createInterface } from "node:readline";
 import type { TestEvent } from "../events/event.js";
 import { readPartitionText } from "./compress.js";
 import { dedupKey } from "./dedup.js";
@@ -14,7 +16,9 @@ export interface AppendResult {
 /**
  * Appends events to their monthly partitions (D1), skipping any whose dedup key already
  * exists in the partition or repeats within this batch (D12). Each partition is written
- * with a single append call so a crash cannot leave a half-written line.
+ * with a single append that is fsynced before returning, so the D12 "durable append →
+ * then advance the watermark" ordering holds even across power loss. (A torn line from a
+ * mid-write crash is still possible; the reader skips such lines rather than failing.)
  */
 export async function appendEvents(
   dataDir: string,
@@ -43,7 +47,13 @@ export async function appendEvents(
 
     if (lines.length > 0) {
       await mkdir(dirname(path), { recursive: true });
-      await appendFile(path, `${lines.join("\n")}\n`, "utf8");
+      const handle = await open(path, "a");
+      try {
+        await handle.writeFile(`${lines.join("\n")}\n`, "utf8");
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
     }
   }
 
@@ -77,18 +87,55 @@ async function readExistingKeys(path: string): Promise<Set<string>> {
 }
 
 async function addKeysFrom(path: string, keys: Set<string>): Promise<void> {
-  let raw: string;
   try {
-    raw = await readPartitionText(path);
+    if (path.endsWith(".zst")) {
+      // zstd decompresses whole-buffer, so a compacted sibling is read in one piece.
+      addKeysFromText(await readPartitionText(path), path, keys);
+      return;
+    }
+    // The uncompressed partition — the current month, hit on every append — is streamed line
+    // by line so the key scan never materializes the whole month (F8 / D3).
+    const lines = createInterface({
+      input: createReadStream(path),
+      crlfDelay: Number.POSITIVE_INFINITY,
+    });
+    for await (const line of lines) {
+      addKeyFromLine(line, path, keys);
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return;
     }
     throw error;
   }
+}
+
+function addKeysFromText(raw: string, path: string, keys: Set<string>): void {
   for (const line of raw.split("\n")) {
-    if (line.trim().length > 0) {
-      keys.add(dedupKey(JSON.parse(line) as TestEvent));
-    }
+    addKeyFromLine(line, path, keys);
+  }
+}
+
+function addKeyFromLine(line: string, path: string, keys: Set<string>): void {
+  if (line.trim().length === 0) {
+    return;
+  }
+  const event = parseEventLine(line, path);
+  if (event) {
+    keys.add(dedupKey(event));
+  }
+}
+
+/**
+ * Parses one stored NDJSON line into an event, or returns null (with a warning naming the
+ * file) when the line is corrupt — a torn write or a hand-edit must degrade to one lost
+ * record, never brick every future `collect` and `report` for the repo (F4).
+ */
+export function parseEventLine(line: string, source: string): TestEvent | null {
+  try {
+    return JSON.parse(line) as TestEvent;
+  } catch {
+    console.warn(`Skipping malformed line in ${source} (corrupt partition?).`);
+    return null;
   }
 }

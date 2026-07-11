@@ -19,6 +19,7 @@ import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
 import type { RepoRef } from "../github/repo.js";
 import { classifyRuns, listRunsSince } from "../github/runs.js";
+import { acquireLock, LockError } from "../state/lock.js";
 import { loadState, repoState, type State, saveState } from "../state/state.js";
 import { type AppendResult, appendEvents } from "../store/ndjson.js";
 import { parseRepoFlags } from "./repo-flags.js";
@@ -116,33 +117,51 @@ export const collectCommand = defineCommand({
       return;
     }
 
-    const now = new Date();
-    const state = await loadState(args["state-file"]);
-    const shared: SharedOptions = {
-      stateFile: args["state-file"],
-      dataDir: args["data-dir"],
-      dryRun: args["dry-run"],
-      fullErrors: args["full-errors"],
-      maxArtifactMb,
-      now,
-      palette,
-    };
-
-    if (targets.length > 1) {
-      console.log(palette.heading(`Collecting ${targets.length} repositories.`));
+    // Single-writer guard (F5): overlapping collects on the same state file would race the
+    // read-keys → append sequence into duplicates and clobber each other's watermarks.
+    let releaseLock: () => Promise<void>;
+    try {
+      releaseLock = await acquireLock(`${args["state-file"]}.lock`);
+    } catch (error) {
+      if (error instanceof LockError) {
+        console.error(palette.bad(error.message));
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
     }
 
-    const totals: RunTotals = { repos: 0, eventsBuilt: 0, written: 0, deduped: 0 };
-    for (const target of targets) {
-      const repoTotals = await collectRepo(client, target, shared, state);
-      totals.repos++;
-      totals.eventsBuilt += repoTotals.eventsBuilt;
-      totals.written += repoTotals.written;
-      totals.deduped += repoTotals.deduped;
-    }
+    try {
+      const now = new Date();
+      const state = await loadState(args["state-file"]);
+      const shared: SharedOptions = {
+        stateFile: args["state-file"],
+        dataDir: args["data-dir"],
+        dryRun: args["dry-run"],
+        fullErrors: args["full-errors"],
+        maxArtifactMb,
+        now,
+        palette,
+      };
 
-    if (targets.length > 1) {
-      printRunSummary(totals, shared.dryRun, palette);
+      if (targets.length > 1) {
+        console.log(palette.heading(`Collecting ${targets.length} repositories.`));
+      }
+
+      const totals: RunTotals = { repos: 0, eventsBuilt: 0, written: 0, deduped: 0 };
+      for (const target of targets) {
+        const repoTotals = await collectRepo(client, target, shared, state);
+        totals.repos++;
+        totals.eventsBuilt += repoTotals.eventsBuilt;
+        totals.written += repoTotals.written;
+        totals.deduped += repoTotals.deduped;
+      }
+
+      if (targets.length > 1) {
+        printRunSummary(totals, shared.dryRun, palette);
+      }
+    } finally {
+      await releaseLock();
     }
   },
 });
@@ -284,7 +303,7 @@ function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean, p:
   if (summary.oversizedArtifacts > 0) {
     console.log(
       p.warn(
-        `    ${summary.oversizedArtifacts} artifact(s) skipped for exceeding --max-artifact-mb.`,
+        `    ${summary.oversizedArtifacts} artifact(s) skipped as oversized (--max-artifact-mb or the extraction budget).`,
       ),
     );
   }

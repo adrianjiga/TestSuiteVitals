@@ -13,11 +13,17 @@ export interface RedactOptions {
 
 /** Patterns for secrets that must never be stored (D6). */
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  // PEM private-key blocks (connection failures love to dump these whole).
+  [/-{5}BEGIN [A-Z ]*PRIVATE KEY-{5}[\s\S]*?(?:-{5}END [A-Z ]*PRIVATE KEY-{5}|$)/g, "[REDACTED]"],
   // Known token shapes: GitHub PATs, OAuth, Slack, AWS access keys.
   [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g, "[REDACTED]"],
   [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[REDACTED]"],
   [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED]"],
   [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED]"],
+  // Bare JWTs: three base64url segments, the first always starting eyJ ('{"').
+  [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]"],
+  // Credentials in a URL authority: scheme://user:pass@host (connection strings).
+  [/\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/g, "$1[REDACTED]@"],
   // Bearer/Basic auth headers (covers the Authorization header case).
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/g, "$1 [REDACTED]"],
   // key=value / key: value secrets.

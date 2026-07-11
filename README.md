@@ -68,6 +68,13 @@ At least one repo is required, via `--repo` (repeatable), `--config`, or both. O
 run for a repo, collection defaults to the last 72 hours; afterwards it resumes from the
 stored watermark. Re-running is always safe — overlapping windows are de-duplicated.
 
+Collection is guarded against the usual hazards: a `<state-file>.lock` file rejects a second
+`collect` on the same state file (delete it if a crashed run left it behind); an artifact that
+would decompress past a 500 MB budget is skipped and reported instead of exhausting memory; and
+a corrupt line in a partition is skipped with a warning rather than failing the run. Error
+messages are redacted by default — known token shapes, `user:pass@` URL credentials, JWTs, PEM
+private-key blocks, and query-string values — and truncated; `--full-errors` bypasses both.
+
 ### Config file
 
 A `--config` file collects several repos in one invocation. Each repo is a bare `owner/name`
@@ -158,7 +165,9 @@ suitevitals compact [--repo <owner/name>] [--data-dir <path>]
 With no `--repo`, every repo in the data directory is compacted. Each closed month's
 `<YYYY-MM>.ndjson` becomes `<YYYY-MM>.ndjson.zst`; `report` and `dashboard` read either form
 transparently, so compaction is invisible to the rest of the tool. It is idempotent — re-running
-compacts only what is new.
+compacts only what is new — and crash-safe: if a month is left in both forms (a crash
+mid-compaction, or a late backfill into a compacted month), the next run merges them into one
+`.zst`, de-duplicating any overlap so nothing ever double-counts.
 
 ### Doctor
 

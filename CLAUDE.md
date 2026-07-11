@@ -44,8 +44,9 @@ git-friendly files, then reports flakiness. It is a CLI with no server and no in
 The **M1 walking skeleton is complete**. `collect` is wired end-to-end through:
 auth → load state (`src/state/state.ts`) → compute window (`src/collect/window.ts`) → list +
 classify runs (`src/github/runs.ts`) → fetch + extract report artifacts (`src/github/artifacts.ts`
-for list/match/download, `src/artifacts/extract.ts` for unzip via fflate, `src/artifacts/fetch.ts`
-to orchestrate) → parse reports into events (`src/collect/parse.ts` walks files, `src/adapters/`
+for list/match/download, `src/artifacts/extract.ts` for unzip via fflate — zip-slip-guarded and
+capped by a declared-size decompression budget so zip bombs are skipped before inflating,
+`src/artifacts/fetch.ts` to orchestrate) → parse reports into events (`src/collect/parse.ts` walks files, `src/adapters/`
 dispatches by content sniff, `src/events/` holds the schema/identity in `event.ts` and
 redaction/fingerprint in `error.ts`) → append to NDJSON (`src/store/` for partition/dedup/append)
 and advance the watermark (`src/collect/watermark.ts`). Adapters: **JUnit** (`src/adapters/junit.ts`),
@@ -93,7 +94,10 @@ reader (`read.ts`) and append-dedup (`ndjson.ts`) read either form transparently
 compact writes the new `.zst` to a temp file, atomically renames it, then removes the raw
 `.ndjson`; if both forms coexist for a month (a crash window, or a late backfill into a compacted
 month) the reader dedups by key per month so nothing double-counts, and a later `compact` merges
-them back into one `.zst`.
+them back into one `.zst`, deduping by key during the merge — the reader's both-forms dedup only
+holds while two files coexist, so the merge must bake in no duplicates. A partition line that
+cannot be parsed is warn-and-skipped by the reader and the append-dedup, and kept verbatim by
+compact (it deletes its sources, so it never drops what it cannot parse).
 
 The `doctor` command (`src/commands/doctor.ts`) is the onboarding path: it inspects a repo's
 recent runs for report-looking artifacts and, if none, prints the exact reporter + `upload-artifact`
@@ -118,10 +122,14 @@ injected palette and default to plain (tests assert on colorless output). Comman
 via `colorSupported` (picocolors' TTY / `NO_COLOR` / `FORCE_COLOR` detection). `--json` is never
 colored. Color is applied *after* column padding so ANSI codes never break table alignment.
 
-Idempotency contract (D12): `collect` appends durably *first*, then advances the watermark and
-saves state — so a crash between is recovered by re-collecting (the `(run_id, run_attempt, id,
-matrix)` dedup absorbs the overlap), never skipped. Running `collect` twice yields zero new writes.
-The watermark never passes an in-progress run; pending runs are also tracked by id in `pending_runs`.
+Idempotency contract (D12): `collect` appends durably *first* (the append is fsynced), then
+advances the watermark and saves state — so a crash between is recovered by re-collecting (the
+`(run_id, run_attempt, id, matrix)` dedup absorbs the overlap), never skipped. Running `collect`
+twice yields zero new writes. The watermark never passes an in-progress run; pending runs are also
+tracked by id in `pending_runs`. A `<state-file>.lock` single-writer lock (`src/state/lock.ts`)
+rejects a concurrent `collect` on the same state file, so the read-keys → append sequence never
+races itself. Error redaction (D6, `src/events/error.ts`) covers known token shapes, `user:pass@`
+URL credentials, bare JWTs, PEM private-key blocks, and query-string values.
 
 Adapter design: parsing is a pure `bytes → ParsedTest[]` transform; enrichment (`buildEvent` adds
 `id`/`run`, and the matrix — preferring a per-test `matrix` the adapter sets over the collect
