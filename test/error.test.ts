@@ -20,6 +20,31 @@ describe("redactSecrets", () => {
   it("redacts query-string values but keeps the key", () => {
     expect(redactSecrets("GET /x?sig=deadbeef&n=1")).toBe("GET /x?sig=[REDACTED]&n=[REDACTED]");
   });
+
+  it("redacts credentials in a URL authority but keeps scheme and host", () => {
+    expect(redactSecrets("Error: connect mongodb://admin:hunter2@db:27017 failed")).toBe(
+      "Error: connect mongodb://[REDACTED]@db:27017 failed",
+    );
+    expect(redactSecrets("postgres://u:p@localhost/app")).toBe(
+      "postgres://[REDACTED]@localhost/app",
+    );
+    // A URL with no credentials is left alone.
+    expect(redactSecrets("GET https://api.example.com/v1 -> 500")).toBe(
+      "GET https://api.example.com/v1 -> 500",
+    );
+  });
+
+  it("redacts bare JWTs", () => {
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcDEFghiJKLmnoPQRstuVWxyz0123456789aa";
+    expect(redactSecrets(`token rejected: ${jwt}`)).toBe("token rejected: [REDACTED]");
+  });
+
+  it("redacts PEM private-key blocks, including truncated ones", () => {
+    const pem = "-----BEGIN PRIVATE KEY-----\nMIIEvAIBADANBg\n-----END PRIVATE KEY-----";
+    expect(redactSecrets(`bad key: ${pem}`)).toBe("bad key: [REDACTED]");
+    // A block cut off mid-dump (truncation upstream) must not leak its head.
+    expect(redactSecrets("-----BEGIN RSA PRIVATE KEY-----\nMIIEvAIBADANBg")).toBe("[REDACTED]");
+  });
 });
 
 describe("truncate", () => {
