@@ -6,12 +6,16 @@ export interface RepoConfigEntry {
   repo: string;
   hoursBack?: number;
   concurrency?: number;
+  workflow?: string;
+  excludeTriggers?: string[];
 }
 
 /** A parsed `--config` file: a repo list plus optional defaults applied to every repo. */
 export interface RepoConfig {
   hoursBack?: number;
   concurrency?: number;
+  workflow?: string;
+  excludeTriggers?: string[];
   repos: (string | RepoConfigEntry)[];
 }
 
@@ -21,6 +25,10 @@ export interface CollectTarget {
   slug: string;
   hoursBack?: number;
   concurrency: number;
+  /** Only collect runs of workflows matching this glob (`*` wildcard). */
+  workflow?: string;
+  /** Skip runs fired by these trigger events. */
+  excludeTriggers?: string[];
 }
 
 export interface ResolveTargetsInput {
@@ -30,6 +38,10 @@ export interface ResolveTargetsInput {
   cliHoursBack?: number;
   /** `--concurrency` from the CLI, if any. */
   cliConcurrency?: number;
+  /** `--workflow` from the CLI, if any. */
+  cliWorkflow?: string;
+  /** `--exclude-trigger` from the CLI, if any. */
+  cliExcludeTriggers?: string[];
   /** Parsed `--config` file, if one was given. */
   config?: RepoConfig;
   /** Built-in concurrency default when nothing else sets it. */
@@ -66,6 +78,8 @@ export function parseConfig(raw: string, source = "config"): RepoConfig {
   return {
     hoursBack: optionalHoursBack(data.hoursBack, `${source} hoursBack`),
     concurrency: optionalConcurrency(data.concurrency, `${source} concurrency`),
+    workflow: optionalString(data.workflow, `${source} workflow`),
+    excludeTriggers: optionalStringArray(data.excludeTriggers, `${source} excludeTriggers`),
     repos: repos.map((entry, i) => parseEntry(entry, `${source} repos[${i}]`)),
   };
 }
@@ -81,6 +95,8 @@ function parseEntry(entry: unknown, where: string): string | RepoConfigEntry {
     repo: entry.repo,
     hoursBack: optionalHoursBack(entry.hoursBack, `${where} hoursBack`),
     concurrency: optionalConcurrency(entry.concurrency, `${where} concurrency`),
+    workflow: optionalString(entry.workflow, `${where} workflow`),
+    excludeTriggers: optionalStringArray(entry.excludeTriggers, `${where} excludeTriggers`),
   };
 }
 
@@ -92,11 +108,19 @@ function parseEntry(entry: unknown, where: string): string | RepoConfigEntry {
  * merge yields no repos.
  */
 export function resolveTargets(input: ResolveTargetsInput): CollectTarget[] {
-  const { cliRepos, cliHoursBack, cliConcurrency, config, defaultConcurrency } = input;
+  const {
+    cliRepos,
+    cliHoursBack,
+    cliConcurrency,
+    cliWorkflow,
+    cliExcludeTriggers,
+    config,
+    defaultConcurrency,
+  } = input;
   const targets: CollectTarget[] = [];
   const seen = new Set<string>();
 
-  const add = (repo: string, perRepo: { hoursBack?: number; concurrency?: number }) => {
+  const add = (repo: string, perRepo: Omit<RepoConfigEntry, "repo">) => {
     const ref = parseRepoRef(repo);
     const slug = repoSlug(ref);
     if (seen.has(slug)) {
@@ -109,6 +133,8 @@ export function resolveTargets(input: ResolveTargetsInput): CollectTarget[] {
       hoursBack: perRepo.hoursBack ?? cliHoursBack ?? config?.hoursBack,
       concurrency:
         perRepo.concurrency ?? cliConcurrency ?? config?.concurrency ?? defaultConcurrency,
+      workflow: perRepo.workflow ?? cliWorkflow ?? config?.workflow,
+      excludeTriggers: perRepo.excludeTriggers ?? cliExcludeTriggers ?? config?.excludeTriggers,
     });
   };
 
@@ -116,7 +142,8 @@ export function resolveTargets(input: ResolveTargetsInput): CollectTarget[] {
     if (typeof entry === "string") {
       add(entry, {});
     } else {
-      add(entry.repo, { hoursBack: entry.hoursBack, concurrency: entry.concurrency });
+      const { repo, ...perRepo } = entry;
+      add(repo, perRepo);
     }
   }
   for (const repo of cliRepos) {
@@ -151,4 +178,28 @@ function optionalConcurrency(value: unknown, where: string): number | undefined 
     throw new Error(`Invalid ${where}: expected a positive integer.`);
   }
   return value;
+}
+
+function optionalString(value: unknown, where: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`Invalid ${where}: expected a non-empty string.`);
+  }
+  return value;
+}
+
+function optionalStringArray(value: unknown, where: string): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((item) => typeof item !== "string" || item.trim().length === 0)
+  ) {
+    throw new Error(`Invalid ${where}: expected an array of non-empty strings.`);
+  }
+  return value as string[];
 }

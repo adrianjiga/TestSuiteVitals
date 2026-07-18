@@ -31,6 +31,25 @@ describe("parseConfig", () => {
     );
     expect(() => parseConfig('{"repos":[],"hoursBack":-3}')).toThrow(/expected a positive number/);
   });
+
+  it("parses and validates workflow and excludeTriggers", () => {
+    const config = parseConfig(
+      JSON.stringify({
+        workflow: "CI",
+        excludeTriggers: ["pull_request"],
+        repos: [{ repo: "o/r", workflow: "e2e-*", excludeTriggers: ["schedule"] }],
+      }),
+    );
+    expect(config.workflow).toBe("CI");
+    expect(config.excludeTriggers).toEqual(["pull_request"]);
+    expect(config.repos[0]).toMatchObject({ workflow: "e2e-*", excludeTriggers: ["schedule"] });
+
+    expect(() => parseConfig('{"repos":[],"workflow":""}')).toThrow(/non-empty string/);
+    expect(() => parseConfig('{"repos":[],"excludeTriggers":[]}')).toThrow(/non-empty strings/);
+    expect(() => parseConfig('{"repos":[{"repo":"o/r","excludeTriggers":[1]}]}')).toThrow(
+      /non-empty strings/,
+    );
+  });
 });
 
 describe("resolveTargets", () => {
@@ -61,6 +80,26 @@ describe("resolveTargets", () => {
     const [target] = resolveTargets({ ...base, cliRepos: ["owner/a"] });
     expect(target?.concurrency).toBe(5);
     expect(target?.hoursBack).toBeUndefined();
+  });
+
+  it("resolves workflow and excludeTriggers most-specific-wins", () => {
+    const targets = resolveTargets({
+      ...base,
+      cliWorkflow: "CI",
+      cliExcludeTriggers: ["pull_request"],
+      config: {
+        workflow: "any",
+        repos: [{ repo: "owner/override", workflow: "e2e-*" }, "owner/inherits"],
+      },
+    });
+
+    // per-repo config beats the CLI flag; a repo without one falls through to the CLI flag,
+    // which beats the config-level default.
+    expect(targets.find((t) => t.slug === "owner/override")?.workflow).toBe("e2e-*");
+    expect(targets.find((t) => t.slug === "owner/inherits")?.workflow).toBe("CI");
+    expect(targets.find((t) => t.slug === "owner/inherits")?.excludeTriggers).toEqual([
+      "pull_request",
+    ]);
   });
 
   it("de-duplicates a repo named in both config and CLI, keeping the config entry", () => {

@@ -10,6 +10,7 @@ import {
   fetchReportArtifacts,
 } from "../artifacts/fetch.js";
 import { type CollectTarget, loadConfig, resolveTargets } from "../collect/config.js";
+import { filterRuns } from "../collect/filter.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
 import { nextWatermark } from "../collect/watermark.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
@@ -107,6 +108,14 @@ export const collectCommand = defineCommand({
       type: "string",
       description: `Number of runs to fetch in parallel (default ${DEFAULT_CONCURRENCY})`,
     },
+    workflow: {
+      type: "string",
+      description: "Only collect runs of workflows matching this glob (default: all workflows)",
+    },
+    "exclude-trigger": {
+      type: "string",
+      description: "Skip runs fired by these trigger events (comma-separated, e.g. pull_request)",
+    },
     "max-artifact-mb": {
       type: "string",
       description: `Size cap for sniffing unnamed report artifacts (default ${DEFAULT_MAX_ARTIFACT_MB})`,
@@ -123,6 +132,8 @@ export const collectCommand = defineCommand({
       cliRepos: parseRepoFlags(rawArgs),
       cliHoursBack: hoursBack,
       cliConcurrency: concurrency,
+      cliWorkflow: args.workflow,
+      cliExcludeTriggers: parseExcludeTriggers(args["exclude-trigger"]),
       config,
       defaultConcurrency: DEFAULT_CONCURRENCY,
     });
@@ -248,10 +259,19 @@ async function collectRepo(
     }
   }
 
-  const { completed, pending } = classifyRuns(runs);
+  // Filtered-out runs are policy skips: never collected, and — unlike pending runs — safe for
+  // the watermark to pass, so a repo whose recent activity is all excluded still advances.
+  const { included, excluded } = filterRuns(runs, {
+    workflow: target.workflow,
+    excludeTriggers: target.excludeTriggers,
+  });
+  const { completed, pending } = classifyRuns(included);
   const pendingText = pending.length > 0 ? p.warn(`${pending.length} pending`) : "0 pending";
+  const excludedText = excluded.length > 0 ? p.dim(`, ${excluded.length} excluded by filters`) : "";
   console.log(
-    p.dim(`  Found ${runs.length} run(s): ${completed.length} completed, `) + pendingText,
+    p.dim(`  Found ${runs.length} run(s): ${completed.length} completed, `) +
+      pendingText +
+      excludedText,
   );
 
   const workdir = await mkdtemp(join(tmpdir(), "suitevitals-"));
@@ -280,9 +300,10 @@ async function collectRepo(
     printParseSummary(parsed.summary, p);
 
     // Durable append first, then advance state — so a crash in between is recovered by
-    // re-collecting (dedup absorbs the overlap), never skipped (D12).
+    // re-collecting (dedup absorbs the overlap), never skipped (D12). Excluded runs count as
+    // disposed-of for the watermark; pending runs still hold it back.
     const append = await appendEvents(shared.dataDir, slug, parsed.events);
-    const watermark = nextWatermark(previous.watermark, completed, pending);
+    const watermark = nextWatermark(previous.watermark, [...completed, ...excluded], pending);
     state.repos[slug] = {
       watermark,
       pending_runs: pending.map((run) => run.run_id),
@@ -475,6 +496,21 @@ function parseConcurrency(value: string | undefined): number | undefined {
     throw new Error(`Invalid --concurrency "${value}": expected a positive integer.`);
   }
   return n;
+}
+
+/** Splits a comma-separated `--exclude-trigger` list; returns undefined when not provided. */
+function parseExcludeTriggers(value: string | undefined): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const triggers = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+  if (triggers.length === 0) {
+    throw new Error(`Invalid --exclude-trigger "${value}": expected trigger event names.`);
+  }
+  return triggers;
 }
 
 /** Parses and validates `--max-artifact-mb`; returns undefined to use the default. */
