@@ -307,6 +307,11 @@ function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean, p:
       ),
     );
   }
+  if (summary.failedArtifacts > 0) {
+    console.log(
+      p.warn(`    ${summary.failedArtifacts} artifact(s) failed to extract and were skipped.`),
+    );
+  }
   if (summary.skippedArtifacts > 0) {
     console.log(p.dim(`    ${summary.skippedArtifacts} non-report artifact(s) skipped.`));
   }
@@ -316,6 +321,11 @@ function printParseSummary(summary: ParseSummary, p: Palette): void {
   console.log(
     p.dim(`  Reports: parsed ${summary.filesParsed}/${summary.filesScanned} candidate file(s).`),
   );
+  if (summary.filesFailed > 0) {
+    console.log(
+      p.warn(`    ${summary.filesFailed} candidate file(s) failed to parse and were skipped.`),
+    );
+  }
   const passed = p.good(`${summary.passed} passed`);
   const failed = summary.failed > 0 ? p.bad(`${summary.failed} failed`) : p.dim("0 failed");
   const skipped = summary.skipped > 0 ? p.warn(`${summary.skipped} skipped`) : p.dim("0 skipped");

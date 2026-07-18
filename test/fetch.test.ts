@@ -231,4 +231,23 @@ describe("fetchReportArtifacts", () => {
     expect(summary.filesExtracted).toBe(1); // the healthy report still landed
     expect(reports).toHaveLength(1);
   });
+
+  it("warns and continues when an artifact's archive fails to extract", async () => {
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async () => [artifact(70, "broken-report"), artifact(71, "junit-report")]),
+      download: vi.fn(async (id: number) => (id === 70 ? strToU8("not a zip") : reportZip)),
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const { summary, reports } = await fetchReportArtifacts(fetcher, [run(1)], workdir);
+
+      expect(summary.failedArtifacts).toBe(1); // the corrupt one, surfaced not fatal
+      expect(summary.filesExtracted).toBe(1); // the healthy report still landed
+      expect(reports).toHaveLength(1);
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });

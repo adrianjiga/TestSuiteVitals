@@ -1,7 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunReports } from "../src/artifacts/fetch.js";
 import { parseRunReports } from "../src/collect/parse.js";
 import type { WorkflowRun } from "../src/github/runs.js";
@@ -63,5 +63,28 @@ describe("parseRunReports", () => {
     const { events, summary } = await parseRunReports([{ run, files: [] }], "owner/name");
     expect(events).toHaveLength(0);
     expect(summary.filesScanned).toBe(0);
+  });
+
+  it("warns and continues when a candidate file cannot be parsed", async () => {
+    // Passes the mochawesome sniff but is truncated mid-document — JSON.parse throws.
+    const broken = join(dir, "mochawesome.json");
+    await writeFile(broken, '{"stats":{"passPercent":100,"testsRegistered":2},"results":[');
+    const good = join(dir, "junit.xml");
+    await writeFile(good, JUNIT);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const { events, summary } = await parseRunReports(
+        [{ run, files: [broken, good] }],
+        "owner/name",
+      );
+
+      expect(summary.filesFailed).toBe(1); // the truncated file, surfaced not fatal
+      expect(summary.filesParsed).toBe(1); // the healthy report still parsed
+      expect(events).toHaveLength(2);
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
