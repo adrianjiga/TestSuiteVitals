@@ -56,9 +56,14 @@ describe("truncate", () => {
     expect(truncate("x".repeat(500), 400)).toBe(`${"x".repeat(400)} …[truncated]`);
   });
 
-  it("never cuts the first line even when it exceeds the limit", () => {
+  it("keeps only the first line of over-long multi-line text", () => {
+    const text = `${"a".repeat(9)}\n${"bloat".repeat(100)}`;
+    expect(truncate(text, 400)).toBe(`${"a".repeat(9)} …[truncated]`);
+  });
+
+  it("caps the first line at the limit too — the budget holds even without a newline", () => {
     const text = `${"a".repeat(50)}\nmore`;
-    expect(truncate(text, 10)).toBe(`${"a".repeat(50)} …[truncated]`);
+    expect(truncate(text, 10)).toBe(`${"a".repeat(10)} …[truncated]`);
   });
 });
 

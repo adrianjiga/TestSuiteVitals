@@ -41,17 +41,18 @@ export function redactSecrets(text: string): string {
 }
 
 /**
- * Truncates over-long text (D6). When the text spans multiple lines, the whole first
- * line is kept and the rest dropped — failure messages put the signal on line one and
- * the bloat (HTML dumps, response bodies) on later lines. A single over-long line with
- * no newline is hard-capped at `limit`.
+ * Truncates over-long text (D6). When the text spans multiple lines, only the first line is
+ * kept — failure messages put the signal on line one and the bloat (HTML dumps, response
+ * bodies) on later lines. The kept portion is always hard-capped at `limit`: a single-line
+ * dump *is* the bloat (minified HTML on line one is common, and a hostile report can put
+ * megabytes there), so the budget must hold with or without a newline.
  */
 export function truncate(text: string, limit: number): string {
   if (text.length <= limit) {
     return text;
   }
   const newline = text.indexOf("\n");
-  const keep = newline === -1 ? limit : newline;
+  const keep = newline === -1 ? limit : Math.min(newline, limit);
   return `${text.slice(0, keep)} …[truncated]`;
 }
 
