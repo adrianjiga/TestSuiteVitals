@@ -20,6 +20,11 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[REDACTED]"],
   [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED]"],
   [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED]"],
+  // GitLab PATs, npm automation tokens, OpenAI-style sk- keys (length floors keep short
+  // identifiers like CSS class names untouched).
+  [/\bglpat-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]"],
+  [/\bnpm_[A-Za-z0-9]{30,}\b/g, "[REDACTED]"],
+  [/\bsk-[A-Za-z0-9_-]{32,}\b/g, "[REDACTED]"],
   // Bare JWTs: three base64url segments, the first always starting eyJ ('{"').
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]"],
   // Credentials in a URL authority: scheme://user:pass@host (connection strings).

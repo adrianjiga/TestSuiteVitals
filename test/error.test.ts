@@ -34,6 +34,14 @@ describe("redactSecrets", () => {
     );
   });
 
+  it("redacts GitLab, npm, and OpenAI-style tokens", () => {
+    expect(redactSecrets(`push failed: glpat-${"a".repeat(20)}`)).toBe("push failed: [REDACTED]");
+    expect(redactSecrets(`npm_${"a".repeat(36)} rejected`)).toBe("[REDACTED] rejected");
+    expect(redactSecrets(`sk-proj-${"a".repeat(40)}`)).toBe("[REDACTED]");
+    // Short sk- prefixed identifiers (CSS class names like sk-circle) stay untouched.
+    expect(redactSecrets("div.sk-circle failed to render")).toBe("div.sk-circle failed to render");
+  });
+
   it("redacts bare JWTs", () => {
     const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcDEFghiJKLmnoPQRstuVWxyz0123456789aa";
     expect(redactSecrets(`token rejected: ${jwt}`)).toBe("token rejected: [REDACTED]");
