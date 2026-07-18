@@ -1,42 +1,71 @@
 import { open, readFile, rm } from "node:fs/promises";
 
-/** Thrown when the lock is already held — another collect is (or crashed while) running. */
+/** Thrown when the lock is already held — another collect is running. */
 export class LockError extends Error {
   override name = "LockError";
+}
+
+export interface AcquireLockOptions {
+  /** Overrides pid-liveness detection; injectable for tests. */
+  isPidAlive?: (pid: number) => boolean;
 }
 
 /**
  * Acquires an advisory single-writer lock by creating `path` exclusively (`wx`), writing the
  * holder's pid. Two overlapping `collect` runs on the same state file would otherwise race the
  * read-keys → append sequence into duplicate events and clobber each other's state (F5); the
- * loser now fails fast with a clear message instead. Returns a release function.
+ * loser fails fast with a clear message instead. Returns a release function.
  *
- * The lock is advisory and can go stale if a holder is SIGKILLed; the error names the file and
- * its recorded pid so a stale lock is a one-command fix, not a mystery.
+ * A lock whose recorded pid is no longer running is stale — the holder was SIGKILLed or died
+ * without reaching its cleanup — and is broken automatically (with a note) rather than demanding
+ * a manual delete. If two processes race the same stale break, exactly one wins the exclusive
+ * re-create; the other reads the new, live holder and fails as held.
  */
-export async function acquireLock(path: string): Promise<() => Promise<void>> {
-  let handle: Awaited<ReturnType<typeof open>>;
-  try {
-    handle = await open(path, "wx");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
-      throw error;
+export async function acquireLock(
+  path: string,
+  options: AcquireLockOptions = {},
+): Promise<() => Promise<void>> {
+  const { isPidAlive = defaultIsPidAlive } = options;
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const handle = await open(path, "wx");
+      try {
+        await handle.writeFile(`${process.pid}\n`, "utf8");
+      } finally {
+        await handle.close();
+      }
+      return async () => {
+        await rm(path, { force: true });
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+      const holder = await readFile(path, "utf8").then(
+        (pid) => pid.trim() || "unknown",
+        () => "unknown",
+      );
+      const pid = Number(holder);
+      if (attempt === 0 && Number.isInteger(pid) && pid > 0 && !isPidAlive(pid)) {
+        console.warn(`Breaking stale lock ${path}: holder pid ${pid} is no longer running.`);
+        await rm(path, { force: true });
+        continue;
+      }
+      throw new LockError(
+        `Another collect appears to be running (lock ${path} held by pid ${holder}). ` +
+          "If that process is gone, delete the lock file and retry.",
+      );
     }
-    const holder = await readFile(path, "utf8").then(
-      (pid) => pid.trim(),
-      () => "unknown",
-    );
-    throw new LockError(
-      `Another collect appears to be running (lock ${path} held by pid ${holder}). ` +
-        "If that process is gone, delete the lock file and retry.",
-    );
   }
+}
+
+/** True when `pid` is a running process; EPERM means alive but owned by another user. */
+function defaultIsPidAlive(pid: number): boolean {
   try {
-    await handle.writeFile(`${process.pid}\n`, "utf8");
-  } finally {
-    await handle.close();
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
   }
-  return async () => {
-    await rm(path, { force: true });
-  };
 }

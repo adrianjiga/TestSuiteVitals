@@ -146,6 +146,16 @@ export const collectCommand = defineCommand({
       throw error;
     }
 
+    // Ctrl-C / kill would skip the finally below (Node dies on the signal without unwinding),
+    // stranding the lock until the stale-pid check breaks it next run. Release it eagerly and
+    // re-exit with the conventional signal code; D12 makes the interrupted collect safe to rerun.
+    const releaseOnSignal = (signal: NodeJS.Signals) => {
+      console.error(palette.bad(`\nInterrupted (${signal}); lock released — rerun to resume.`));
+      void releaseLock().finally(() => process.exit(signal === "SIGTERM" ? 143 : 130));
+    };
+    process.once("SIGINT", releaseOnSignal);
+    process.once("SIGTERM", releaseOnSignal);
+
     try {
       const now = new Date();
       const state = await loadState(args["state-file"]);
@@ -187,6 +197,8 @@ export const collectCommand = defineCommand({
         printRunSummary(totals, shared.dryRun, palette);
       }
     } finally {
+      process.removeListener("SIGINT", releaseOnSignal);
+      process.removeListener("SIGTERM", releaseOnSignal);
       await releaseLock();
     }
   },
