@@ -44,6 +44,15 @@ interface RunTotals {
   eventsBuilt: number;
   written: number;
   deduped: number;
+  /** Repos whose collection aborted on an error; the rest of the fleet still ran. */
+  failed: number;
+}
+
+/** What one repo's collection contributed to the run totals. */
+interface RepoTotals {
+  eventsBuilt: number;
+  written: number;
+  deduped: number;
 }
 
 export const collectCommand = defineCommand({
@@ -148,13 +157,24 @@ export const collectCommand = defineCommand({
         console.log(palette.heading(`Collecting ${targets.length} repositories.`));
       }
 
-      const totals: RunTotals = { repos: 0, eventsBuilt: 0, written: 0, deduped: 0 };
+      const totals: RunTotals = { repos: 0, eventsBuilt: 0, written: 0, deduped: 0, failed: 0 };
       for (const target of targets) {
-        const repoTotals = await collectRepo(client, target, shared, state);
-        totals.repos++;
-        totals.eventsBuilt += repoTotals.eventsBuilt;
-        totals.written += repoTotals.written;
-        totals.deduped += repoTotals.deduped;
+        // One repo's failure (revoked access, a deleted repo, an outage mid-download) must not
+        // stop the rest of the fleet. State is saved per repo *after* its durable append, so an
+        // aborted repo keeps its old watermark and is simply retried next collect (D12).
+        try {
+          const repoTotals = await collectRepo(client, target, shared, state);
+          totals.repos++;
+          totals.eventsBuilt += repoTotals.eventsBuilt;
+          totals.written += repoTotals.written;
+          totals.deduped += repoTotals.deduped;
+        } catch (error) {
+          totals.failed++;
+          process.exitCode = 1;
+          console.error(
+            palette.bad(`  [${target.slug}] collect failed: ${(error as Error).message}`),
+          );
+        }
       }
 
       if (targets.length > 1) {
@@ -177,7 +197,7 @@ async function collectRepo(
   target: CollectTarget,
   shared: SharedOptions,
   state: State,
-): Promise<RunTotals> {
+): Promise<RepoTotals> {
   const { octokit } = client;
   const { ref, slug } = target;
   const p = shared.palette;
@@ -218,7 +238,7 @@ async function collectRepo(
     printArtifactSummary(summary, shared.dryRun, p);
 
     if (shared.dryRun) {
-      return { repos: 1, eventsBuilt: 0, written: 0, deduped: 0 };
+      return { eventsBuilt: 0, written: 0, deduped: 0 };
     }
 
     const parsed = await parseRunReports(reports, slug, {
@@ -240,7 +260,6 @@ async function collectRepo(
     printAppendSummary(append, watermark, p);
 
     return {
-      repos: 1,
       eventsBuilt: parsed.summary.eventsBuilt,
       written: append.written,
       deduped: append.deduped,
@@ -346,13 +365,16 @@ function printAppendSummary(append: AppendResult, watermark: string | undefined,
 function printRunSummary(totals: RunTotals, dryRun: boolean, p: Palette): void {
   if (dryRun) {
     console.log(p.heading(`\nDone (dry run): scanned ${totals.repos} repositories.`));
-    return;
+  } else {
+    console.log(
+      p.heading(
+        `\nDone: ${totals.repos} repositories, wrote ${totals.written} new event(s), ${totals.deduped} duplicate(s) skipped.`,
+      ),
+    );
   }
-  console.log(
-    p.heading(
-      `\nDone: ${totals.repos} repositories, wrote ${totals.written} new event(s), ${totals.deduped} duplicate(s) skipped.`,
-    ),
-  );
+  if (totals.failed > 0) {
+    console.log(p.bad(`${totals.failed} repositories failed and will be retried next collect.`));
+  }
 }
 
 /**
