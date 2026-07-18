@@ -51,4 +51,19 @@ describe("parseJUnit", () => {
     expect(tests).toHaveLength(1);
     expect(tests[0]?.duration_ms).toBe(500);
   });
+
+  it("still decodes built-in entities in ordinary documents", () => {
+    const xml = '<testsuite name="s"><testcase name="a &amp; b" time="0"/></testsuite>';
+    expect(parseJUnit(xml)[0]?.title_path).toEqual(["a & b"]);
+  });
+
+  it("does not expand DOCTYPE-declared entities (amplification guard)", () => {
+    // One long entity referenced many times expands quadratically; a DOCTYPE-bearing
+    // document must parse with entity processing off, leaving references literal.
+    const xml = `<?xml version="1.0"?>
+<!DOCTYPE testsuites [<!ENTITY x "${"A".repeat(50)}">]>
+<testsuites><testsuite name="s"><testcase name="&x;&x;&x;" time="0"/></testsuite></testsuites>`;
+    const [test] = parseJUnit(xml);
+    expect(test?.title_path).toEqual(["&x;&x;&x;"]);
+  });
 });

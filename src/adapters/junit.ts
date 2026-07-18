@@ -9,14 +9,27 @@ export function looksLikeJUnit(content: string): boolean {
   return /<testsuites?[\s>]/.test(content);
 }
 
-const parser = new XMLParser({
+const XML_OPTIONS = {
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   textNodeName: "#text",
   parseTagValue: false,
   trimValues: true,
-  isArray: (name) => ["testsuite", "testcase", "failure", "error"].includes(name),
-});
+  isArray: (name: string) => ["testsuite", "testcase", "failure", "error"].includes(name),
+};
+
+const parser = new XMLParser(XML_OPTIONS);
+
+/**
+ * For DOCTYPE-bearing documents only: fast-xml-parser expands `<!ENTITY>` definitions by default,
+ * and although it blocks *recursive* entities, one long value referenced many times still expands
+ * quadratically — a ~50 MB report inflating to gigabytes in memory (F1). No real JUnit emitter
+ * writes a DOCTYPE, so those documents are parsed with entity processing off (references stay as
+ * literal `&name;` text) rather than being dropped.
+ */
+const noEntitiesParser = new XMLParser({ ...XML_OPTIONS, processEntities: false });
+
+const HAS_DOCTYPE = /<!DOCTYPE/i;
 
 interface XmlNode {
   [key: string]: unknown;
@@ -27,7 +40,8 @@ interface XmlNode {
  * yields a single attempt; the richer `attempts[]` comes from Playwright/Mochawesome.
  */
 export function parseJUnit(xml: string, options: RedactOptions = {}): ParsedTest[] {
-  const root = parser.parse(xml) as XmlNode;
+  const activeParser = HAS_DOCTYPE.test(xml) ? noEntitiesParser : parser;
+  const root = activeParser.parse(xml) as XmlNode;
   const suites = collectSuites(root);
   const tests: ParsedTest[] = [];
 
