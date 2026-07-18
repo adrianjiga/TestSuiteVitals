@@ -52,4 +52,11 @@ describe("dedupKey", () => {
   ])("changes when %s changes", (_label, variant) => {
     expect(dedupKey(variant)).not.toBe(dedupKey(event()));
   });
+
+  it("distinguishes matrix cells whose flattened forms would collide", () => {
+    // A `key=value,…` serialization renders both of these as `a=x,b=y`.
+    const a = event({ matrix: { a: "x,b=y" } });
+    const b = event({ matrix: { a: "x", b: "y" } });
+    expect(dedupKey(a)).not.toBe(dedupKey(b));
+  });
 });
