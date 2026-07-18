@@ -30,7 +30,9 @@ type ListedRun = Awaited<
   ReturnType<Octokit["rest"]["actions"]["listWorkflowRunsForRepo"]>
 >["data"]["workflow_runs"][number];
 
-function normalize(run: ListedRun): WorkflowRun {
+type FetchedRun = Awaited<ReturnType<Octokit["rest"]["actions"]["getWorkflowRun"]>>["data"];
+
+function normalize(run: ListedRun | FetchedRun): WorkflowRun {
   return {
     run_id: run.id,
     run_attempt: run.run_attempt ?? 1,
@@ -74,6 +76,26 @@ export async function listRunsSince(
   }
 
   return runs;
+}
+
+/** Fetches a single workflow run by id — the D12 pending-run re-check path. */
+export async function getRun(octokit: Octokit, ref: RepoRef, runId: number): Promise<WorkflowRun> {
+  const { data } = await octokit.rest.actions.getWorkflowRun({
+    owner: ref.owner,
+    repo: ref.repo,
+    run_id: runId,
+  });
+  return normalize(data);
+}
+
+/**
+ * Tracked pending-run ids that the window listing did not surface — runs created before the
+ * window start whose completion the `created`-filtered listing can never see (D12). These are
+ * re-fetched by id so the watermark passing them never loses them.
+ */
+export function missingPendingIds(pendingIds: number[], listed: WorkflowRun[]): number[] {
+  const seen = new Set(listed.map((run) => run.run_id));
+  return pendingIds.filter((id) => !seen.has(id));
 }
 
 /** Splits runs into completed (collectable) and pending (in-progress/queued). */

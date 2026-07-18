@@ -18,7 +18,13 @@ import { downloadArtifactZip, listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
 import type { RepoRef } from "../github/repo.js";
-import { classifyRuns, listRunsSince } from "../github/runs.js";
+import {
+  classifyRuns,
+  getRun,
+  listRunsSince,
+  missingPendingIds,
+  type WorkflowRun,
+} from "../github/runs.js";
 import { acquireLock, LockError } from "../state/lock.js";
 import { loadState, repoState, type State, saveState } from "../state/state.js";
 import { type AppendResult, appendEvents } from "../store/ndjson.js";
@@ -216,6 +222,20 @@ async function collectRepo(
   }
 
   const runs = await listRunsSince(octokit, ref, window.since);
+
+  // Pending runs the window listing no longer surfaces (created before the window start) are
+  // re-checked by id, so the watermark having passed them never loses their artifacts (D12).
+  const recheck = missingPendingIds(previous.pending_runs, runs);
+  if (recheck.length > 0) {
+    console.log(p.dim(`  Re-checking ${recheck.length} tracked pending run(s) by id.`));
+  }
+  for (const runId of recheck) {
+    const fetched = await fetchPendingRun(octokit, ref, runId, p);
+    if (fetched) {
+      runs.push(fetched);
+    }
+  }
+
   const { completed, pending } = classifyRuns(runs);
   const pendingText = pending.length > 0 ? p.warn(`${pending.length} pending`) : "0 pending";
   console.log(
@@ -266,6 +286,27 @@ async function collectRepo(
     };
   } finally {
     await rm(workdir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Fetches one tracked pending run by id. A 404 means the run (or its repo history) was deleted;
+ * it is dropped from tracking with a warning rather than blocking every future collect.
+ */
+async function fetchPendingRun(
+  octokit: GitHubClient["octokit"],
+  ref: RepoRef,
+  runId: number,
+  p: Palette,
+): Promise<WorkflowRun | null> {
+  try {
+    return await getRun(octokit, ref, runId);
+  } catch (error) {
+    if ((error as { status?: number }).status === 404) {
+      console.warn(p.warn(`  Pending run ${runId} no longer exists; dropping it.`));
+      return null;
+    }
+    throw error;
   }
 }
 
