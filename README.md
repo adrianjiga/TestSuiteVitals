@@ -69,11 +69,16 @@ run for a repo, collection defaults to the last 72 hours; afterwards it resumes 
 stored watermark. Re-running is always safe — overlapping windows are de-duplicated.
 
 Collection is guarded against the usual hazards: a `<state-file>.lock` file rejects a second
-`collect` on the same state file (delete it if a crashed run left it behind); an artifact that
-would decompress past a 500 MB budget is skipped and reported instead of exhausting memory; and
-a corrupt line in a partition is skipped with a warning rather than failing the run. Error
-messages are redacted by default — known token shapes, `user:pass@` URL credentials, JWTs, PEM
-private-key blocks, and query-string values — and truncated; `--full-errors` bypasses both.
+`collect` on the same state file (a stale lock whose recorded pid is gone is broken
+automatically, and Ctrl-C releases the lock on the way out); an artifact that would decompress
+past a 500 MB budget is skipped and reported instead of exhausting memory — a report artifact
+already bigger than that budget is skipped before it is even downloaded; a corrupt archive or an
+unparseable report file costs that one artifact or file, with a warning, never the run; in a
+multi-repo invocation a failing repo is reported and the rest still collect; and a corrupt line
+in a partition is skipped with a warning rather than failing the run. Error messages are
+redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, OpenAI-style),
+`user:pass@` URL credentials, JWTs, PEM private-key blocks, and query-string values — and
+truncated to a budget that holds even for single-line dumps; `--full-errors` bypasses both.
 
 ### Config file
 

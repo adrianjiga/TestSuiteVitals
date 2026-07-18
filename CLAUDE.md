@@ -14,7 +14,8 @@ npm run check                  # Biome lint + format + autofix (run before every
 npm run build                  # compile src/ to dist/ (publish artifact)
 ```
 
-CI (`.github/workflows/ci.yml`) runs `biome ci`, `typecheck`, `test`, then `build` on Node 24.
+CI (`.github/workflows/ci.yml`) runs `npm audit` (prod deps, high+), `biome ci`, `typecheck`,
+`test`, then `build` on Node 24, with a read-only `GITHUB_TOKEN`.
 
 Run `npm run check` before every commit; after a feature, also run tests and update `README.md`
 and this file. Formatting is Biome (double quotes, 2-space, 100-col) — let it own style; don't
@@ -45,7 +46,9 @@ The **M1 walking skeleton is complete**. `collect` is wired end-to-end through:
 auth → load state (`src/state/state.ts`) → compute window (`src/collect/window.ts`) → list +
 classify runs (`src/github/runs.ts`) → fetch + extract report artifacts (`src/github/artifacts.ts`
 for list/match/download, `src/artifacts/extract.ts` for unzip via fflate — zip-slip-guarded and
-capped by a declared-size decompression budget so zip bombs are skipped before inflating,
+capped by a declared-size decompression budget so zip bombs are skipped before inflating; a
+report artifact whose compressed size already exceeds that budget is skipped before download,
+and any other extraction or parse failure costs only that artifact/file with a warning,
 `src/artifacts/fetch.ts` to orchestrate) → parse reports into events (`src/collect/parse.ts` walks files, `src/adapters/`
 dispatches by content sniff, `src/events/` holds the schema/identity in `event.ts` and
 redaction/fingerprint in `error.ts`) → append to NDJSON (`src/store/` for partition/dedup/append)
@@ -59,7 +62,8 @@ A single `collect` run can target several repos: repeatable `--repo`, a `--confi
 both (`src/collect/config.ts` parses/validates and `resolveTargets` merges them most-specific-wins:
 per-repo override → CLI flag → config default → built-in, de-duping repos named twice). The repos
 share one client/state-file/data-dir and run sequentially via `collectRepo`; state is keyed per
-repo and saved after each, so a crash mid-loop keeps the repos already collected. M1 and M2 are
+repo and saved after each, so a crash mid-loop keeps the repos already collected, and one repo's
+failure is reported (non-zero exit) while the rest still collect. M1 and M2 are
 complete; **M3 (report + scoring) is in progress**.
 
 Reporting reads back from the partitions (`src/report/`): `read.ts` streams a repo's events one
@@ -126,10 +130,17 @@ Idempotency contract (D12): `collect` appends durably *first* (the append is fsy
 advances the watermark and saves state — so a crash between is recovered by re-collecting (the
 `(run_id, run_attempt, id, matrix)` dedup absorbs the overlap), never skipped. Running `collect`
 twice yields zero new writes. The watermark never passes an in-progress run; pending runs are also
-tracked by id in `pending_runs`. A `<state-file>.lock` single-writer lock (`src/state/lock.ts`)
-rejects a concurrent `collect` on the same state file, so the read-keys → append sequence never
-races itself. Error redaction (D6, `src/events/error.ts`) covers known token shapes, `user:pass@`
-URL credentials, bare JWTs, PEM private-key blocks, and query-string values.
+tracked by id in `pending_runs` and re-fetched by id once the window listing no longer surfaces
+them, so a wide `--hours-back` can never strand one. `state.json` is written atomically
+(temp + rename). A `<state-file>.lock` single-writer lock (`src/state/lock.ts`) rejects a
+concurrent `collect` on the same state file, so the read-keys → append sequence never races
+itself; a stale lock whose recorded pid is dead is auto-broken, and SIGINT/SIGTERM release the
+lock before exiting. Error redaction (D6, `src/events/error.ts`) covers known token shapes
+(GitHub, Slack, AWS, GitLab, npm, OpenAI-style), `user:pass@` URL credentials, bare JWTs, PEM
+private-key blocks, and query-string values; truncation caps the kept first line at the budget.
+The JUnit sniff is head-anchored and DOCTYPE-bearing documents parse with entity expansion off
+(no quadratic amplification); matrix cells serialize as JSON inside dedup/grouping keys
+(`stableMatrix` in `src/store/dedup.ts`) so cell content can never collide two cells.
 
 Adapter design: parsing is a pure `bytes → ParsedTest[]` transform; enrichment (`buildEvent` adds
 `id`/`run`, and the matrix — preferring a per-test `matrix` the adapter sets over the collect
