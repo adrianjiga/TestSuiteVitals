@@ -20,8 +20,21 @@ describe("looksLikeJUnit", () => {
     expect(looksLikeJUnit('<testsuite name="x"/>')).toBe(true);
   });
 
+  it("accepts a BOM, comments, and a DOCTYPE before the root", () => {
+    expect(looksLikeJUnit("\uFEFF<!-- generated -->\n<testsuites></testsuites>")).toBe(true);
+    expect(
+      looksLikeJUnit('<?xml version="1.0"?><!DOCTYPE testsuites [<!ENTITY x "a">]><testsuites/>'),
+    ).toBe(true);
+  });
+
   it("rejects non-JUnit content", () => {
     expect(looksLikeJUnit('{"stats":{}}')).toBe(false);
+  });
+
+  it("rejects a document that merely mentions the tag mid-content", () => {
+    // A mochawesome JSON quoting XML in an error message must not be routed to the XML parser.
+    const json = '{"stats":{"passPercent":1},"err":"expected <testsuite name=\\"x\\"> here"}';
+    expect(looksLikeJUnit(json)).toBe(false);
   });
 });
 

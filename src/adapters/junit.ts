@@ -4,9 +4,18 @@ import type { ParsedTest, TestAttempt, TestStatus } from "../events/event.js";
 
 export const JUNIT_FRAMEWORK = "junit";
 
-/** Cheap content sniff: a JUnit report's root is `<testsuites>` or `<testsuite>`. */
+/**
+ * Cheap head-anchored sniff: after an optional BOM, XML prolog, comments, and DOCTYPE, the
+ * document's root element must be `<testsuites>` or `<testsuite>`. Anchoring matters: dispatch
+ * tries JUnit first, so a JSON report that merely *mentions* the tag mid-document (e.g. an error
+ * message quoting XML) must not be routed here — parsing it as XML yields zero tests and silently
+ * loses the real report.
+ */
+const JUNIT_ROOT =
+  /^\uFEFF?\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^[>]*(?:\[[^\]]*\])?[^>]*>\s*)?<testsuites?[\s/>]/;
+
 export function looksLikeJUnit(content: string): boolean {
-  return /<testsuites?[\s>]/.test(content);
+  return JUNIT_ROOT.test(content.slice(0, 4096));
 }
 
 const XML_OPTIONS = {
