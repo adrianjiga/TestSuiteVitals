@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import { defineCommand } from "citty";
+import { matchesGlob } from "../collect/filter.js";
 import { colorSupported, createPalette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
 import { Aggregator } from "../report/aggregate.js";
@@ -9,6 +10,7 @@ import { readRepoEvents } from "../report/read.js";
 import { DEFAULT_MIN_RUNS } from "../report/score.js";
 import { repoDir } from "../store/partition.js";
 import { parseRepoFlags } from "./repo-flags.js";
+import { describeFilters } from "./report.js";
 
 const DEFAULT_DATA_DIR = "data";
 
@@ -46,6 +48,14 @@ export const dashboardCommand = defineCommand({
       type: "string",
       description: "Only include runs within this window: a span like 30d/12h or an ISO timestamp",
     },
+    branch: {
+      type: "string",
+      description: "Only include runs on this branch (exact match, e.g. main)",
+    },
+    workflow: {
+      type: "string",
+      description: "Only include runs of workflows matching this glob (`*` wildcard)",
+    },
   },
   async run({ args, rawArgs }) {
     const repos = parseRepoFlags(rawArgs);
@@ -64,14 +74,24 @@ export const dashboardCommand = defineCommand({
       if (since && new Date(event.run.started_at) < since) {
         continue;
       }
+      if (args.branch && event.run.branch !== args.branch) {
+        continue;
+      }
+      if (args.workflow && !matchesGlob(args.workflow, event.run.workflow)) {
+        continue;
+      }
       aggregator.add(event);
     }
     const aggregates = aggregator.results();
 
     const palette = createPalette(colorSupported);
+    const filterLabel = describeFilters(args.since, args.branch, args.workflow);
     if (aggregates.length === 0) {
       console.log(
-        palette.dim(`No events for ${slug}. Run \`suitevitals collect --repo ${slug}\` first.`),
+        palette.dim(
+          `No events for ${slug}. Run \`suitevitals collect --repo ${slug}\` first` +
+            (filterLabel ? ", or loosen --since/--branch/--workflow." : "."),
+        ),
       );
       return;
     }
@@ -81,7 +101,7 @@ export const dashboardCommand = defineCommand({
       slug,
       totalTests: aggregates.length,
       generatedAt: new Date().toISOString(),
-      ...(args.since ? { windowLabel: `last ${args.since}` } : {}),
+      ...(filterLabel ? { windowLabel: filterLabel } : {}),
     };
 
     const output = args.output ?? `${repoDir(slug)}.html`;

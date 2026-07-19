@@ -1,4 +1,5 @@
 import { defineCommand } from "citty";
+import { matchesGlob } from "../collect/filter.js";
 import { colorSupported, createPalette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
 import { Aggregator } from "../report/aggregate.js";
@@ -40,6 +41,14 @@ export const reportCommand = defineCommand({
       type: "string",
       description: "Only include runs within this window: a span like 30d/12h or an ISO timestamp",
     },
+    branch: {
+      type: "string",
+      description: "Only include runs on this branch (exact match, e.g. main)",
+    },
+    workflow: {
+      type: "string",
+      description: "Only include runs of workflows matching this glob (`*` wildcard)",
+    },
     limit: {
       type: "string",
       description: `Show at most this many ranked tests (default ${DEFAULT_LIMIT})`,
@@ -75,14 +84,21 @@ export const reportCommand = defineCommand({
       if (since && new Date(event.run.started_at) < since) {
         continue;
       }
+      if (args.branch && event.run.branch !== args.branch) {
+        continue;
+      }
+      if (args.workflow && !matchesGlob(args.workflow, event.run.workflow)) {
+        continue;
+      }
       aggregator.add(event);
     }
     const aggregates = aggregator.results();
 
+    const filterLabel = describeFilters(args.since, args.branch, args.workflow);
     if (aggregates.length === 0) {
       console.log(
         `No events for ${slug}. Run \`suitevitals collect --repo ${slug}\` first` +
-          (since ? ", or widen --since." : "."),
+          (filterLabel ? ", or loosen --since/--branch/--workflow." : "."),
       );
       return;
     }
@@ -97,12 +113,26 @@ export const reportCommand = defineCommand({
     const meta: ReportMeta = {
       slug,
       totalTests: aggregates.length,
-      ...(args.since ? { windowLabel: `last ${args.since}` } : {}),
+      ...(filterLabel ? { windowLabel: filterLabel } : {}),
     };
     const palette = createPalette(colorSupported);
     console.log(renderReport(ranked, meta, { limit, all: args.all }, palette));
   },
 });
+
+/** Human label for the active event filters, e.g. `last 30d · branch main`; empty when none. */
+export function describeFilters(
+  since: string | undefined,
+  branch: string | undefined,
+  workflow: string | undefined,
+): string {
+  const parts = [
+    ...(since ? [`last ${since}`] : []),
+    ...(branch ? [`branch ${branch}`] : []),
+    ...(workflow ? [`workflow ${workflow}`] : []),
+  ];
+  return parts.join(" · ");
+}
 
 /** Parses a positive-integer flag; returns undefined when absent so the default applies. */
 function parsePositiveInt(value: string | undefined, flag: string): number | undefined {
