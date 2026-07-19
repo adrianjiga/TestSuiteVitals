@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterRuns, matchesGlob } from "../src/collect/filter.js";
+import { capRuns, filterRuns, matchesGlob, watermarkDisposal } from "../src/collect/filter.js";
 import type { WorkflowRun } from "../src/github/runs.js";
 
 function run(overrides: Partial<WorkflowRun>): WorkflowRun {
@@ -60,5 +60,42 @@ describe("filterRuns", () => {
   it("applies both filters together", () => {
     const { included } = filterRuns(runs, { workflow: "CI", excludeTriggers: ["pull_request"] });
     expect(included.map((r) => r.run_id)).toEqual([1]);
+  });
+});
+
+describe("capRuns", () => {
+  const completed = [
+    run({ run_id: 3, created_at: "2026-07-03T00:00:00Z" }),
+    run({ run_id: 1, created_at: "2026-07-01T00:00:00Z" }),
+    run({ run_id: 2, created_at: "2026-07-02T00:00:00Z" }),
+  ];
+
+  it("passes everything through when under the cap or uncapped", () => {
+    expect(capRuns(completed, undefined)).toEqual({ processed: completed, deferred: 0 });
+    expect(capRuns(completed, 3)).toEqual({ processed: completed, deferred: 0 });
+  });
+
+  it("keeps the oldest runs and defers the newer ones", () => {
+    const { processed, deferred } = capRuns(completed, 2);
+    expect(processed.map((r) => r.run_id)).toEqual([1, 2]);
+    expect(deferred).toBe(1);
+  });
+});
+
+describe("watermarkDisposal", () => {
+  const processed = [run({ run_id: 1, created_at: "2026-07-01T00:00:00Z" })];
+  const excluded = [
+    run({ run_id: 10, created_at: "2026-06-30T00:00:00Z" }),
+    run({ run_id: 11, created_at: "2026-07-05T00:00:00Z" }),
+  ];
+
+  it("passes all excluded runs when nothing was deferred", () => {
+    expect(watermarkDisposal(processed, excluded, 0).map((r) => r.run_id)).toEqual([1, 10, 11]);
+  });
+
+  it("drops excluded runs above the processed ceiling when runs were deferred", () => {
+    // A deferred run created 2026-07-02 must stay ahead of the watermark, so the newer
+    // excluded run (2026-07-05) must not drag the watermark past it.
+    expect(watermarkDisposal(processed, excluded, 1).map((r) => r.run_id)).toEqual([1, 10]);
   });
 });

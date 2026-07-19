@@ -10,7 +10,7 @@ import {
   fetchReportArtifacts,
 } from "../artifacts/fetch.js";
 import { type CollectTarget, loadConfig, resolveTargets } from "../collect/config.js";
-import { filterRuns } from "../collect/filter.js";
+import { capRuns, filterRuns, watermarkDisposal } from "../collect/filter.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
 import { nextWatermark } from "../collect/watermark.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
@@ -41,6 +41,7 @@ interface SharedOptions {
   dryRun: boolean;
   fullErrors: boolean;
   maxArtifactMb: number | undefined;
+  maxRuns: number | undefined;
   now: Date;
   palette: Palette;
 }
@@ -120,11 +121,16 @@ export const collectCommand = defineCommand({
       type: "string",
       description: `Size cap for sniffing unnamed report artifacts (default ${DEFAULT_MAX_ARTIFACT_MB})`,
     },
+    "max-runs": {
+      type: "string",
+      description: "Process at most this many completed runs per repo; the rest resume next run",
+    },
   },
   async run({ args, rawArgs }) {
     const hoursBack = parseHoursBack(args["hours-back"]);
     const concurrency = parseConcurrency(args.concurrency);
     const maxArtifactMb = parseMaxArtifactMb(args["max-artifact-mb"]);
+    const maxRuns = parsePositiveIntFlag(args["max-runs"], "--max-runs");
     const palette = createPalette(colorSupported);
 
     const config = args.config ? await loadConfig(args.config) : undefined;
@@ -176,6 +182,7 @@ export const collectCommand = defineCommand({
         dryRun: args["dry-run"],
         fullErrors: args["full-errors"],
         maxArtifactMb,
+        maxRuns,
         now,
         palette,
       };
@@ -274,11 +281,21 @@ async function collectRepo(
       excludedText,
   );
 
+  const { processed, deferred } = capRuns(completed, shared.maxRuns);
+  if (deferred > 0) {
+    console.log(
+      p.warn(
+        `  --max-runs: processing the oldest ${processed.length} completed run(s); ` +
+          `${deferred} deferred to the next collect.`,
+      ),
+    );
+  }
+
   const workdir = await mkdtemp(join(tmpdir(), "suitevitals-"));
   try {
     const { summary, reports } = await fetchReportArtifacts(
       makeArtifactFetcher(octokit, ref),
-      completed,
+      processed,
       workdir,
       {
         dryRun: shared.dryRun,
@@ -301,9 +318,14 @@ async function collectRepo(
 
     // Durable append first, then advance state — so a crash in between is recovered by
     // re-collecting (dedup absorbs the overlap), never skipped (D12). Excluded runs count as
-    // disposed-of for the watermark; pending runs still hold it back.
+    // disposed-of for the watermark (capped below the processed ceiling when --max-runs
+    // deferred newer runs); pending runs still hold it back.
     const append = await appendEvents(shared.dataDir, slug, parsed.events);
-    const watermark = nextWatermark(previous.watermark, [...completed, ...excluded], pending);
+    const watermark = nextWatermark(
+      previous.watermark,
+      watermarkDisposal(processed, excluded, deferred),
+      pending,
+    );
     state.repos[slug] = {
       watermark,
       pending_runs: pending.map((run) => run.run_id),
@@ -494,6 +516,18 @@ function parseConcurrency(value: string | undefined): number | undefined {
   const n = Number(value);
   if (!Number.isInteger(n) || n < 1) {
     throw new Error(`Invalid --concurrency "${value}": expected a positive integer.`);
+  }
+  return n;
+}
+
+/** Parses a positive-integer flag; returns undefined when absent (no cap / use the default). */
+function parsePositiveIntFlag(value: string | undefined, flag: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(`Invalid ${flag} "${value}": expected a positive integer.`);
   }
   return n;
 }

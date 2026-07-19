@@ -41,3 +41,41 @@ export function filterRuns(runs: WorkflowRun[], filter: RunFilter): FilteredRuns
   }
   return { included, excluded };
 }
+
+export interface CappedRuns {
+  /** The oldest `maxRuns` completed runs — processed this invocation. */
+  processed: WorkflowRun[];
+  /** How many newer completed runs were deferred to the next collect. */
+  deferred: number;
+}
+
+/**
+ * Caps how many completed runs one invocation processes (`--max-runs`, a safety valve for huge
+ * first backfills). The *oldest* runs go first: the watermark then advances only past what was
+ * actually processed, so the deferred newer runs are simply re-listed — and collected — next
+ * time. Zero data loss, bounded work per invocation.
+ */
+export function capRuns(completed: WorkflowRun[], maxRuns: number | undefined): CappedRuns {
+  if (maxRuns === undefined || completed.length <= maxRuns) {
+    return { processed: completed, deferred: 0 };
+  }
+  const oldestFirst = [...completed].sort((a, b) => (a.created_at < b.created_at ? -1 : 1));
+  return { processed: oldestFirst.slice(0, maxRuns), deferred: completed.length - maxRuns };
+}
+
+/**
+ * The runs the watermark may advance past: the processed completed runs plus the policy-excluded
+ * runs. When `--max-runs` deferred newer completed runs, only excluded runs at or below the
+ * processed ceiling count — the watermark must never pass a deferred (still uncollected) run.
+ */
+export function watermarkDisposal(
+  processed: WorkflowRun[],
+  excluded: WorkflowRun[],
+  deferred: number,
+): WorkflowRun[] {
+  if (deferred === 0) {
+    return [...processed, ...excluded];
+  }
+  const ceiling = processed.reduce((max, run) => (run.created_at > max ? run.created_at : max), "");
+  return [...processed, ...excluded.filter((run) => run.created_at <= ceiling)];
+}
