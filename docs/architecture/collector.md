@@ -8,7 +8,9 @@ suitevitals collect
   --config <path>         repos + per-repo overrides
   --hours-back <n>        explicit backfill window
   --concurrency <n>       default 5
-  --workflow <glob>       planned, not yet implemented (all workflows are collected)
+  --workflow <glob>       only collect matching workflows (default: all)
+  --exclude-trigger <l>   skip runs fired by these events (comma-separated)
+  --max-runs <n>          cap completed runs per invocation, oldest first
   --max-artifact-mb <n>   default 100 (tier-3 sniff cap)
   --dry-run               show what would be fetched
   --full-errors
@@ -27,8 +29,11 @@ silently.
 1. **Load state** → watermark + `pending_runs`.
 2. **List runs** — paginate runs newest-first; stop past the window; re-check `pending_runs`
    explicitly.
-3. **Classify** — completed → collect; in-progress/queued → `pending_runs`; the watermark does
-   not advance past them.
+3. **Filter & classify** — `--workflow`/`--exclude-trigger` drop runs by policy (the watermark
+   *may* pass those, or excluding a busy workflow would stall it forever); the rest classify as
+   completed → collect, in-progress/queued → `pending_runs` (the watermark does not advance
+   past them). `--max-runs` then caps the completed set oldest-first; the watermark never
+   passes a deferred run, so the newer remainder is collected next invocation.
 4. **Fetch artifacts** (tiered, [D9](decisions.md#d9--artifact-discovery-tiered)) into a temp
    dir; expired artifacts are counted and reported. A report match whose *compressed* size
    already exceeds the extraction budget is skipped (as oversized) before download, so it can
@@ -66,10 +71,16 @@ silently.
   in both forms (crash mid-compaction, late backfill), the merge de-duplicates by key — the
   reader's both-forms dedup only holds while two files coexist, so the merge must bake in no
   duplicates.
+- `suitevitals prune --keep-months <n>` — **implemented**: retention. Deletes partition files
+  (either form) for months older than the kept window; the current month always survives, and
+  `--dry-run` previews. A later backfill over a pruned window re-collects it (the dedup keys
+  were deleted with the files).
 - `suitevitals doctor --repo <owner/name>` — **implemented**: inspects recent runs; if no report
   artifacts are uploaded, detects the framework from the repo's manifests and prints the exact
   reporter + `upload-artifact` YAML fix. Pure diagnosis (`src/doctor/diagnose.ts`) over signals
-  gathered from the GitHub API.
+  gathered from the GitHub API — one git-trees listing covers monorepo `package.json` files
+  (shallow, capped, `node_modules` excluded) and Java build files at any depth, with root-only
+  probing as the fallback for huge/empty repos.
 
 ## Implementation status
 
@@ -165,6 +176,13 @@ the kept first line too, and redaction also covers GitLab, npm, and OpenAI-style
 Matrix cells serialize as JSON inside dedup/grouping keys, so cell content (`,`, `=`) can never
 make two different cells collide. CI runs with a read-only token and audits production
 dependencies.
+
+A functionality pass (2026-07-19) added the levers the review asked for: collect-time
+`--workflow`/`--exclude-trigger` filters (`src/collect/filter.ts`, also per-repo/config-level
+settings resolved most-specific-wins — and the security lever that keeps fork-PR artifacts out
+entirely), a `--max-runs` oldest-first cap for bounded backfills, `--branch`/`--workflow`
+filters on `report` and `dashboard`, the `prune` retention command, and monorepo-aware
+`doctor`.
 
 ### Known gaps
 

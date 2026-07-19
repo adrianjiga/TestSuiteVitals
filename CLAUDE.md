@@ -60,11 +60,16 @@ one-attempt-per-test like JUnit, no matrix). All emit the same `ParsedTest` shap
 
 A single `collect` run can target several repos: repeatable `--repo`, a `--config` JSON file, or
 both (`src/collect/config.ts` parses/validates and `resolveTargets` merges them most-specific-wins:
-per-repo override → CLI flag → config default → built-in, de-duping repos named twice). The repos
-share one client/state-file/data-dir and run sequentially via `collectRepo`; state is keyed per
-repo and saved after each, so a crash mid-loop keeps the repos already collected, and one repo's
-failure is reported (non-zero exit) while the rest still collect. M1 and M2 are
-complete; **M3 (report + scoring) is in progress**.
+per-repo override → CLI flag → config default → built-in, de-duping repos named twice — the
+overridable fields are `hoursBack`, `concurrency`, `workflow`, and `excludeTriggers`). Collect-time
+filters (`src/collect/filter.ts`: `--workflow` glob, `--exclude-trigger` events) drop runs by
+*policy* — the watermark may pass excluded runs, unlike pending ones, so filtering a busy workflow
+never stalls collection; `--exclude-trigger pull_request` is also the lever that keeps fork-PR
+artifacts out. `--max-runs` caps a backfill oldest-first (`capRuns`/`watermarkDisposal`), and the
+watermark never passes a deferred run. The repos share one client/state-file/data-dir and run
+sequentially via `collectRepo`; state is keyed per repo and saved after each, so a crash mid-loop
+keeps the repos already collected, and one repo's failure is reported (non-zero exit) while the
+rest still collect.
 
 Reporting reads back from the partitions (`src/report/`): `read.ts` streams a repo's events one
 line at a time, oldest month first (D3 — never materializes the whole history); `aggregate.ts`
@@ -82,7 +87,9 @@ diversity beyond the first mode (0.15), workflow re-run rate (0.10) — over `el
 
 The `report` command (`src/commands/report.ts`) wires it together: stream → aggregate → `rankTests`
 (`rank.ts`, splits eligible/below-threshold, sorts by score then evidence) → `render.ts` (terminal
-table or `--json`). Flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--limit`, `--all`.
+table or `--json`). Flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--branch` (exact),
+`--workflow` (glob, shared `matchesGlob`), `--limit`, `--all`. `dashboard` takes the same
+event filters.
 
 The `dashboard` command (`src/commands/dashboard.ts`) renders the same `read → aggregate → rank`
 pipeline as a self-contained HTML file (`src/report/dashboard.ts` — inline CSS, zero runtime deps):
@@ -101,13 +108,19 @@ month) the reader dedups by key per month so nothing double-counts, and a later 
 them back into one `.zst`, deduping by key during the merge — the reader's both-forms dedup only
 holds while two files coexist, so the merge must bake in no duplicates. A partition line that
 cannot be parsed is warn-and-skipped by the reader and the append-dedup, and kept verbatim by
-compact (it deletes its sources, so it never drops what it cannot parse).
+compact (it deletes its sources, so it never drops what it cannot parse). The `prune` command
+(`src/commands/prune.ts` → `src/store/prune.ts`) is retention: it deletes partition files for
+months older than `--keep-months` (counting the current month, which always survives);
+`--dry-run` previews, and a later backfill over a pruned window re-collects it.
 
 The `doctor` command (`src/commands/doctor.ts`) is the onboarding path: it inspects a repo's
 recent runs for report-looking artifacts and, if none, prints the exact reporter + `upload-artifact`
 YAML fix for the detected framework. The diagnosis is pure (`src/doctor/diagnose.ts`: `detectFramework`
-from `package.json` deps / a Java build file, then a `FRAMEWORK → fix` table) over signals gathered
-by the command via the GitHub contents API (`src/github/contents.ts`, integration).
+unions `package.json` deps across manifests / spots a Java build file, then a `FRAMEWORK → fix`
+table) over signals gathered by the command via the GitHub API (`src/github/contents.ts`,
+integration): one git-trees listing finds monorepo `package.json` files (shallow, capped 5,
+`node_modules` excluded — `packageJsonPaths`) and Java build files at any depth, falling back to
+root-only contents probes for huge/empty repos.
 
 Tier-3 artifact discovery (D9) lives in `fetchRun` (`src/artifacts/fetch.ts`): when a run has *no*
 report-name match, its remaining artifacts under `--max-artifact-mb` (default 100) are downloaded
