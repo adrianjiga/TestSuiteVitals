@@ -37,8 +37,8 @@ One NDJSON record per test, per workflow run, per matrix cell.
 ## Field notes
 
 - `id` — stable hash of `file + title_path` only (see [D5](decisions.md#d5--test-identity-hashfile--title_path)).
-- `attempts[]` — filled by rich adapters (Playwright JSON, Mochawesome); the generic JUnit
-  adapter emits a single attempt. Top-level `status` and `flaky` are **derived** so simple
+- `attempts[]` — filled by rich adapters (Playwright blob); the flat adapters (JUnit,
+  Mochawesome) emit a single attempt. Top-level `status` and `flaky` are **derived** so simple
   consumers never parse the array.
 - `flaky` (per-event) — passed after at least one failed attempt.
 - `run.run_attempt` — a human clicking "re-run failed jobs" is a signal the test reporter
@@ -64,4 +64,5 @@ One NDJSON record per test, per workflow run, per matrix cell.
 
 The watermark advances only after a durable append and never past an in-progress run
 (see [D12](decisions.md#d12--crash-safety--idempotency)). `pending_runs` holds in-progress or
-queued runs to re-check on the next collection.
+queued run ids, re-fetched by id on the next collection — even when the watermark (or a
+narrower window) no longer lists them — until each completes or disappears.

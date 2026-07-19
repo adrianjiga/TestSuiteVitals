@@ -13,7 +13,7 @@ constrain the code. They are updated as each milestone lands.
 GitHub Actions artifacts
         │  (tiered discovery + download)
         ▼
-   adapters  ──►  JUnit · Playwright JSON · Mochawesome
+   adapters  ──►  JUnit · Playwright blob · Mochawesome
         │  (normalize)
         ▼
    NDJSON events   data/<owner>__<repo>/<YYYY-MM>.ndjson
@@ -23,8 +23,13 @@ GitHub Actions artifacts
 ```
 
 The collector authenticates once (single Octokit transport), lists workflow runs since a
-stored watermark, downloads report artifacts, dispatches a framework adapter by sniffing the
-extracted files, and appends normalized events with a dedup key so re-runs are always safe.
+stored watermark, drops runs excluded by policy filters (workflow glob, trigger events),
+downloads report artifacts, dispatches a framework adapter by sniffing the extracted files,
+and appends normalized events with a dedup key so re-runs are always safe.
+
+The stored files have a lifecycle the reader never notices: `compact` zstd-compresses closed
+months, and `prune` deletes months older than a retention window. `doctor` is the onboarding
+path — it tells a repo whether collection will work, and prints the exact fix if not.
 
 Reporting reads the same files back: it streams a repo's NDJSON partitions one line at a time
 (never loading the whole history) and folds them into one rollup per test — collapsed across

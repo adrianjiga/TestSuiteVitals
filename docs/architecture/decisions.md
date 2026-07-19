@@ -62,7 +62,9 @@ A single Octokit transport. Token resolution chain: `--token` → `GITHUB_TOKEN`
 
 1. List names + sizes — no downloads.
 2. Download report-glob matches: `*report*`, `*result*`, `*junit*`, `*blob*`, `*mochawesome*`.
-3. Only if zero parseable reports were found, sniff remaining artifacts under
+   A match whose compressed size already exceeds the extraction budget is skipped (surfaced
+   as oversized) *before* download — it could only fail that budget after ballooning memory.
+3. Only if zero report-name matches were found, sniff remaining artifacts under
    `--max-artifact-mb` (default 100).
 
 **Why:** zero-config robustness at ~5% of pure sniff-all bandwidth; failure videos and traces

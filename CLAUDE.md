@@ -43,8 +43,9 @@ git-friendly files, then reports flakiness. It is a CLI with no server and no in
   resolution is pluggable; there is intentionally one transport.
 
 The **M1 walking skeleton is complete**. `collect` is wired end-to-end through:
-auth → load state (`src/state/state.ts`) → compute window (`src/collect/window.ts`) → list +
-classify runs (`src/github/runs.ts`) → fetch + extract report artifacts (`src/github/artifacts.ts`
+auth → load state (`src/state/state.ts`) → compute window (`src/collect/window.ts`) → list runs +
+re-fetch tracked pending ids (`src/github/runs.ts`) → filter by policy + cap (`src/collect/filter.ts`)
+→ classify → fetch + extract report artifacts (`src/github/artifacts.ts`
 for list/match/download, `src/artifacts/extract.ts` for unzip via fflate — zip-slip-guarded and
 capped by a declared-size decompression budget so zip bombs are skipped before inflating; a
 report artifact whose compressed size already exceeds that budget is skipped before download,
@@ -159,10 +160,11 @@ Adapter design: parsing is a pure `bytes → ParsedTest[]` transform; enrichment
 `id`/`run`, and the matrix — preferring a per-test `matrix` the adapter sets over the collect
 default) is separate and shared. Add new formats as adapters, not by touching the pipeline. The
 fetch loop takes an `onProgress` callback so `collect` can show live progress on long backfills.
-Playwright blob artifacts are double-zipped, so `extractZipNested` recurses one nested level. Pure logic (window, classification, repo parse, state, glob matching,
-partitioning, extract, fetch orchestration, redaction, fingerprint, JUnit parse, event build,
-dedup, watermark, NDJSON append) is unit-tested; only the raw Octokit calls (`listRunsSince`,
-`listRunArtifacts`, `downloadArtifactZip`) are left to integration. Artifact fetching runs up to
+Playwright blob artifacts are double-zipped, so `extractZipNested` recurses one nested level. Pure logic (window, classification, run filtering/capping, repo parse,
+state, glob matching, partitioning, prune cutoff, extract, fetch orchestration, redaction,
+fingerprint, JUnit parse, event build, dedup, watermark, NDJSON append, manifest-path
+selection) is unit-tested; only the raw Octokit calls (`listRunsSince`, `getRun`,
+`listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`) are left to integration. Artifact fetching runs up to
 `--concurrency` runs in parallel (`p-limit` pool, default 5): each run is processed into an
 isolated outcome, then outcomes are folded in input order so the summary and event order stay
 deterministic. Rate-limit/transient backoff lives at the transport (`client.ts`) via GitHub's

@@ -7,7 +7,7 @@ you already upload and tells you which tests are flaky, how badly, and where.
 No server, no instrumentation changes — point it at a GitHub repo, and it
 normalizes the test-report artifacts into plain files you own.
 
-> **Status:** v1 feature-complete (M1–M5: collect, report, dashboard, compact, doctor). Not yet published to npm.
+> **Status:** v1 feature-complete (M1–M5: collect, report, dashboard, compact, prune, doctor). Not yet published to npm.
 
 ## Documentation
 

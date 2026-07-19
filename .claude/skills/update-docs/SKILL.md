@@ -10,9 +10,9 @@ nothing is missed and the commit doesn't fail.
 
 ## Files to touch (only the ones the change affects)
 
-- **`README.md`** — the usage table (new `--flags`), the format list, and the "Status (M… in
-  progress)" blurb near the bottom that summarizes what `collect` does today and names the
-  next item.
+- **`README.md`** — the usage tables (new `--flags`), the format list, and the two **Status**
+  blurbs (the one-liner near the top and the detailed one near the bottom) that summarize
+  what the tool does today.
 - **`docs/architecture/collector.md`** — the CLI surface block, the pipeline steps, the
   implemented-adapters list, and the implementation-status paragraph. Keep `[D#]` decision
   links intact.
