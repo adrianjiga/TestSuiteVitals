@@ -36,6 +36,34 @@ export async function getRepoFile(
   }
 }
 
+/**
+ * Lists every blob path on the repo's default branch via the git trees API, or null when the
+ * tree is unavailable (404), the repo is empty (409), or the listing was truncated (huge repos)
+ * — callers fall back to root-only probing. One request replaces per-path existence probes and
+ * lets `doctor` see manifests in monorepo subdirectories.
+ */
+export async function listRepoTree(octokit: Octokit, ref: RepoRef): Promise<string[] | null> {
+  try {
+    const { data: repo } = await octokit.rest.repos.get({ owner: ref.owner, repo: ref.repo });
+    const { data } = await octokit.rest.git.getTree({
+      owner: ref.owner,
+      repo: ref.repo,
+      tree_sha: repo.default_branch,
+      recursive: "1",
+    });
+    if (data.truncated) {
+      return null;
+    }
+    return data.tree.flatMap((entry) => (entry.type === "blob" && entry.path ? [entry.path] : []));
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    if (status === 404 || status === 409) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 /** True if any of the given paths exists in the repo (a cheap presence check via a metadata read). */
 export async function repoHasFile(
   octokit: Octokit,

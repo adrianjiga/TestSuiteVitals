@@ -1,10 +1,17 @@
 import { defineCommand } from "citty";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
-import { type Diagnosis, diagnose, type RepoSignals } from "../doctor/diagnose.js";
+import {
+  type Diagnosis,
+  diagnose,
+  hasJavaBuildFile,
+  JAVA_BUILD_FILES,
+  packageJsonPaths,
+  type RepoSignals,
+} from "../doctor/diagnose.js";
 import { listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
-import { getRepoFile, repoHasFile } from "../github/contents.js";
+import { getRepoFile, listRepoTree, repoHasFile } from "../github/contents.js";
 import { parseRepoRef, type RepoRef, repoSlug } from "../github/repo.js";
 import { classifyRuns, listRunsSince } from "../github/runs.js";
 
@@ -12,8 +19,6 @@ import { classifyRuns, listRunsSince } from "../github/runs.js";
 const RUNS_TO_INSPECT = 10;
 /** How far back to look for runs. */
 const LOOKBACK_DAYS = 30;
-/** Java build files that imply JUnit-format reports. */
-const JAVA_BUILD_FILES = ["pom.xml", "build.gradle", "build.gradle.kts"];
 
 export const doctorCommand = defineCommand({
   meta: {
@@ -61,10 +66,26 @@ async function gatherSignals(client: GitHubClient, ref: RepoRef): Promise<RepoSi
     }
   }
 
-  const packageJson = (await getRepoFile(octokit, ref, "package.json")) ?? undefined;
-  const hasJavaBuild = await repoHasFile(octokit, ref, JAVA_BUILD_FILES);
+  // One tree listing sees monorepo manifests (`apps/web/package.json`) and Java build files
+  // anywhere; when it is unavailable (huge/empty repo), fall back to root-only probing.
+  const tree = await listRepoTree(octokit, ref);
+  if (tree) {
+    const manifests = await Promise.all(
+      packageJsonPaths(tree).map((path) => getRepoFile(octokit, ref, path)),
+    );
+    return {
+      artifactNames: [...artifactNames],
+      packageJsons: manifests.filter((content): content is string => content !== null),
+      hasJavaBuild: hasJavaBuildFile(tree),
+    };
+  }
 
-  return { artifactNames: [...artifactNames], packageJson, hasJavaBuild };
+  const rootManifest = await getRepoFile(octokit, ref, "package.json");
+  return {
+    artifactNames: [...artifactNames],
+    packageJsons: rootManifest === null ? [] : [rootManifest],
+    hasJavaBuild: await repoHasFile(octokit, ref, JAVA_BUILD_FILES),
+  };
 }
 
 function printDiagnosis(slug: string, signals: RepoSignals, result: Diagnosis, p: Palette): void {
