@@ -34,6 +34,14 @@ describe("redactSecrets", () => {
     );
   });
 
+  it("redacts GitLab, npm, and OpenAI-style tokens", () => {
+    expect(redactSecrets(`push failed: glpat-${"a".repeat(20)}`)).toBe("push failed: [REDACTED]");
+    expect(redactSecrets(`npm_${"a".repeat(36)} rejected`)).toBe("[REDACTED] rejected");
+    expect(redactSecrets(`sk-proj-${"a".repeat(40)}`)).toBe("[REDACTED]");
+    // Short sk- prefixed identifiers (CSS class names like sk-circle) stay untouched.
+    expect(redactSecrets("div.sk-circle failed to render")).toBe("div.sk-circle failed to render");
+  });
+
   it("redacts bare JWTs", () => {
     const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcDEFghiJKLmnoPQRstuVWxyz0123456789aa";
     expect(redactSecrets(`token rejected: ${jwt}`)).toBe("token rejected: [REDACTED]");
@@ -56,9 +64,14 @@ describe("truncate", () => {
     expect(truncate("x".repeat(500), 400)).toBe(`${"x".repeat(400)} …[truncated]`);
   });
 
-  it("never cuts the first line even when it exceeds the limit", () => {
+  it("keeps only the first line of over-long multi-line text", () => {
+    const text = `${"a".repeat(9)}\n${"bloat".repeat(100)}`;
+    expect(truncate(text, 400)).toBe(`${"a".repeat(9)} …[truncated]`);
+  });
+
+  it("caps the first line at the limit too — the budget holds even without a newline", () => {
     const text = `${"a".repeat(50)}\nmore`;
-    expect(truncate(text, 10)).toBe(`${"a".repeat(50)} …[truncated]`);
+    expect(truncate(text, 10)).toBe(`${"a".repeat(10)} …[truncated]`);
   });
 });
 

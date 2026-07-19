@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -39,6 +39,16 @@ describe("state", () => {
 
     await saveState(path, state);
     expect(await loadState(path)).toEqual(state);
+  });
+
+  it("saves atomically — no temp file survives, and an existing file is replaced whole", async () => {
+    await saveState(path, emptyState());
+    const next = emptyState();
+    next.repos["o/r"] = { pending_runs: [] };
+    await saveState(path, next);
+
+    expect(await readdir(dir)).toEqual(["state.json"]);
+    expect(await loadState(path)).toEqual(next);
   });
 
   it("repoState yields an empty entry for an unknown repo", () => {

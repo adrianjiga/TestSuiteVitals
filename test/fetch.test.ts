@@ -195,6 +195,25 @@ describe("fetchReportArtifacts", () => {
     expect(fetcher.download).toHaveBeenCalledWith(41);
   });
 
+  it("skips report artifacts larger than the extraction budget before downloading", async () => {
+    // The compressed size already exceeds the decompressed budget, so the download can only
+    // waste memory — it must be skipped (and surfaced) without ever calling download.
+    const huge = { id: 60, name: "playwright-report", size_bytes: 2 * 1024 * 1024, expired: false };
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async () => [huge, artifact(61, "junit-report")]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { summary } = await fetchReportArtifacts(fetcher, [run(1)], workdir, {
+      maxExtractMb: 1,
+    });
+
+    expect(fetcher.download).toHaveBeenCalledTimes(1);
+    expect(fetcher.download).toHaveBeenCalledWith(61);
+    expect(summary.reportArtifacts).toBe(1); // only the downloadable one
+    expect(summary.oversizedArtifacts).toBe(1); // the huge one, surfaced not dropped
+  });
+
   it("counts a zip bomb as oversized and keeps collecting the run's other artifacts", async () => {
     // A tiny compressed zip declaring 2 MB uncompressed; extraction budget throws on it. The
     // GitHub-reported size_bytes is small, so only the extraction-time guard can catch it.
@@ -211,5 +230,24 @@ describe("fetchReportArtifacts", () => {
     expect(summary.oversizedArtifacts).toBe(1); // the bomb, surfaced not fatal
     expect(summary.filesExtracted).toBe(1); // the healthy report still landed
     expect(reports).toHaveLength(1);
+  });
+
+  it("warns and continues when an artifact's archive fails to extract", async () => {
+    const fetcher: ArtifactFetcher = {
+      list: vi.fn(async () => [artifact(70, "broken-report"), artifact(71, "junit-report")]),
+      download: vi.fn(async (id: number) => (id === 70 ? strToU8("not a zip") : reportZip)),
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const { summary, reports } = await fetchReportArtifacts(fetcher, [run(1)], workdir);
+
+      expect(summary.failedArtifacts).toBe(1); // the corrupt one, surfaced not fatal
+      expect(summary.filesExtracted).toBe(1); // the healthy report still landed
+      expect(reports).toHaveLength(1);
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

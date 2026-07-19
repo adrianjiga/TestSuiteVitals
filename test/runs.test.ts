@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyRuns, type WorkflowRun } from "../src/github/runs.js";
+import { classifyRuns, missingPendingIds, type WorkflowRun } from "../src/github/runs.js";
 
 function run(overrides: Partial<WorkflowRun>): WorkflowRun {
   return {
@@ -39,5 +39,16 @@ describe("classifyRuns", () => {
 
   it("returns empty buckets for no runs", () => {
     expect(classifyRuns([])).toEqual({ completed: [], pending: [] });
+  });
+});
+
+describe("missingPendingIds", () => {
+  it("keeps only tracked ids the listing did not surface", () => {
+    const listed = [run({ run_id: 1 }), run({ run_id: 3 })];
+    expect(missingPendingIds([1, 2, 3, 4], listed)).toEqual([2, 4]);
+  });
+
+  it("is empty when nothing was tracked", () => {
+    expect(missingPendingIds([], [run({ run_id: 1 })])).toEqual([]);
   });
 });

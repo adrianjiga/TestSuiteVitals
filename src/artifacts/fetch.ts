@@ -33,6 +33,8 @@ export interface ArtifactFetchSummary {
   sniffedArtifacts: number;
   /** Sniff candidates skipped for exceeding the size cap — surfaced, never silently dropped. */
   oversizedArtifacts: number;
+  /** Artifacts whose archive failed to extract (corrupt or hostile) — warned and skipped (F1). */
+  failedArtifacts: number;
   /** Non-report artifacts left un-examined (a name match existed, so tier-3 did not run). */
   skippedArtifacts: number;
 }
@@ -63,6 +65,7 @@ interface RunOutcome {
   expiredArtifacts: number;
   sniffedArtifacts: number;
   oversizedArtifacts: number;
+  failedArtifacts: number;
   skippedArtifacts: number;
   files: string[];
 }
@@ -77,6 +80,7 @@ function emptySummary(): ArtifactFetchSummary {
     runsWithExpired: 0,
     sniffedArtifacts: 0,
     oversizedArtifacts: 0,
+    failedArtifacts: 0,
     skippedArtifacts: 0,
   };
 }
@@ -133,10 +137,11 @@ export async function fetchReportArtifacts(
 
 /**
  * Fetches and extracts one run's artifacts in isolation (no shared state). Tier 2 downloads the
- * report-name matches. Tier 3 (D9): only when a run has *no* name match, the remaining artifacts
- * under the size cap are downloaded and extracted too, so a report uploaded under an unexpected
- * name is still found — the content sniff in the parse step discards anything that is not a report.
- * Oversized sniff candidates are counted and reported, never silently dropped.
+ * report-name matches under the extraction budget. Tier 3 (D9): only when a run has *no* name
+ * match, the remaining artifacts under the size cap are downloaded and extracted too, so a report
+ * uploaded under an unexpected name is still found — the content sniff in the parse step discards
+ * anything that is not a report. Oversized artifacts are counted and reported, never silently
+ * dropped.
  */
 async function fetchRun(
   fetcher: ArtifactFetcher,
@@ -148,11 +153,24 @@ async function fetchRun(
 ): Promise<RunOutcome> {
   const artifacts = await fetcher.list(run.run_id);
   const partition = partitionArtifacts(artifacts);
+  let oversized = 0;
+
+  // Tier 2: a report match whose *compressed* size already exceeds the decompressed-size budget
+  // could only fail that budget anyway — after an unbounded in-memory download. Skip it (and
+  // surface it) before downloading, so a huge "playwright-report" of videos can never OOM the
+  // process (F1).
+  const toDownload: ArtifactMeta[] = [];
+  for (const artifact of partition.reports) {
+    if (artifact.size_bytes > maxExtractBytes) {
+      oversized++;
+    } else {
+      toDownload.push(artifact);
+    }
+  }
 
   // Tier 3 runs only when no report-name match was found for this run.
   const sniffRun = partition.reports.length === 0;
   const toSniff: ArtifactMeta[] = [];
-  let oversized = 0;
   if (sniffRun) {
     for (const artifact of partition.skipped) {
       if (artifact.size_bytes > maxArtifactBytes) {
@@ -164,8 +182,9 @@ async function fetchRun(
   }
 
   const files: string[] = [];
+  let failed = 0;
   if (!dryRun) {
-    for (const artifact of [...partition.reports, ...toSniff]) {
+    for (const artifact of [...toDownload, ...toSniff]) {
       const zip = await fetcher.download(artifact.id);
       const dest = join(workdir, String(run.run_id), String(artifact.id));
       try {
@@ -177,7 +196,16 @@ async function fetchRun(
           oversized++;
           continue;
         }
-        throw error;
+        // Any other extraction failure — corrupt zip bytes, an entry escaping the destination
+        // (zip-slip), an unwritable entry name — is deterministic content, so retrying cannot
+        // help; it costs this one artifact with a warning, never the whole collect (F1).
+        // Download errors, by contrast, still propagate: they are transient transport failures,
+        // and aborting before the watermark advances is what makes them safe to retry (D12).
+        failed++;
+        console.warn(
+          `Skipping artifact "${artifact.name}" (#${artifact.id}) of run ${run.run_id}: ` +
+            `${(error as Error).message}`,
+        );
       }
     }
   }
@@ -185,10 +213,11 @@ async function fetchRun(
   return {
     run,
     artifactsSeen: artifacts.length,
-    reportArtifacts: partition.reports.length,
+    reportArtifacts: toDownload.length,
     expiredArtifacts: partition.expired.length,
     sniffedArtifacts: toSniff.length,
     oversizedArtifacts: oversized,
+    failedArtifacts: failed,
     // When tier-3 ran, the skipped bucket was examined (sniffed/oversized); otherwise it is left alone.
     skippedArtifacts: sniffRun ? 0 : partition.skipped.length,
     files,
@@ -207,6 +236,7 @@ function foldOutcomes(outcomes: RunOutcome[]): ArtifactFetchResult {
     summary.expiredArtifacts += outcome.expiredArtifacts;
     summary.sniffedArtifacts += outcome.sniffedArtifacts;
     summary.oversizedArtifacts += outcome.oversizedArtifacts;
+    summary.failedArtifacts += outcome.failedArtifacts;
     summary.skippedArtifacts += outcome.skippedArtifacts;
     if (outcome.expiredArtifacts > 0) {
       summary.runsWithExpired++;

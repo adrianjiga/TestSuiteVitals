@@ -14,7 +14,8 @@ npm run check                  # Biome lint + format + autofix (run before every
 npm run build                  # compile src/ to dist/ (publish artifact)
 ```
 
-CI (`.github/workflows/ci.yml`) runs `biome ci`, `typecheck`, `test`, then `build` on Node 24.
+CI (`.github/workflows/ci.yml`) runs `npm audit` (prod deps, high+), `biome ci`, `typecheck`,
+`test`, then `build` on Node 24, with a read-only `GITHUB_TOKEN`.
 
 Run `npm run check` before every commit; after a feature, also run tests and update `README.md`
 and this file. Formatting is Biome (double quotes, 2-space, 100-col) — let it own style; don't
@@ -42,10 +43,13 @@ git-friendly files, then reports flakiness. It is a CLI with no server and no in
   resolution is pluggable; there is intentionally one transport.
 
 The **M1 walking skeleton is complete**. `collect` is wired end-to-end through:
-auth → load state (`src/state/state.ts`) → compute window (`src/collect/window.ts`) → list +
-classify runs (`src/github/runs.ts`) → fetch + extract report artifacts (`src/github/artifacts.ts`
+auth → load state (`src/state/state.ts`) → compute window (`src/collect/window.ts`) → list runs +
+re-fetch tracked pending ids (`src/github/runs.ts`) → filter by policy + cap (`src/collect/filter.ts`)
+→ classify → fetch + extract report artifacts (`src/github/artifacts.ts`
 for list/match/download, `src/artifacts/extract.ts` for unzip via fflate — zip-slip-guarded and
-capped by a declared-size decompression budget so zip bombs are skipped before inflating,
+capped by a declared-size decompression budget so zip bombs are skipped before inflating; a
+report artifact whose compressed size already exceeds that budget is skipped before download,
+and any other extraction or parse failure costs only that artifact/file with a warning,
 `src/artifacts/fetch.ts` to orchestrate) → parse reports into events (`src/collect/parse.ts` walks files, `src/adapters/`
 dispatches by content sniff, `src/events/` holds the schema/identity in `event.ts` and
 redaction/fingerprint in `error.ts`) → append to NDJSON (`src/store/` for partition/dedup/append)
@@ -57,10 +61,16 @@ one-attempt-per-test like JUnit, no matrix). All emit the same `ParsedTest` shap
 
 A single `collect` run can target several repos: repeatable `--repo`, a `--config` JSON file, or
 both (`src/collect/config.ts` parses/validates and `resolveTargets` merges them most-specific-wins:
-per-repo override → CLI flag → config default → built-in, de-duping repos named twice). The repos
-share one client/state-file/data-dir and run sequentially via `collectRepo`; state is keyed per
-repo and saved after each, so a crash mid-loop keeps the repos already collected. M1 and M2 are
-complete; **M3 (report + scoring) is in progress**.
+per-repo override → CLI flag → config default → built-in, de-duping repos named twice — the
+overridable fields are `hoursBack`, `concurrency`, `workflow`, and `excludeTriggers`). Collect-time
+filters (`src/collect/filter.ts`: `--workflow` glob, `--exclude-trigger` events) drop runs by
+*policy* — the watermark may pass excluded runs, unlike pending ones, so filtering a busy workflow
+never stalls collection; `--exclude-trigger pull_request` is also the lever that keeps fork-PR
+artifacts out. `--max-runs` caps a backfill oldest-first (`capRuns`/`watermarkDisposal`), and the
+watermark never passes a deferred run. The repos share one client/state-file/data-dir and run
+sequentially via `collectRepo`; state is keyed per repo and saved after each, so a crash mid-loop
+keeps the repos already collected, and one repo's failure is reported (non-zero exit) while the
+rest still collect.
 
 Reporting reads back from the partitions (`src/report/`): `read.ts` streams a repo's events one
 line at a time, oldest month first (D3 — never materializes the whole history); `aggregate.ts`
@@ -78,7 +88,9 @@ diversity beyond the first mode (0.15), workflow re-run rate (0.10) — over `el
 
 The `report` command (`src/commands/report.ts`) wires it together: stream → aggregate → `rankTests`
 (`rank.ts`, splits eligible/below-threshold, sorts by score then evidence) → `render.ts` (terminal
-table or `--json`). Flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--limit`, `--all`.
+table or `--json`). Flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--branch` (exact),
+`--workflow` (glob, shared `matchesGlob`), `--limit`, `--all`. `dashboard` takes the same
+event filters.
 
 The `dashboard` command (`src/commands/dashboard.ts`) renders the same `read → aggregate → rank`
 pipeline as a self-contained HTML file (`src/report/dashboard.ts` — inline CSS, zero runtime deps):
@@ -97,13 +109,19 @@ month) the reader dedups by key per month so nothing double-counts, and a later 
 them back into one `.zst`, deduping by key during the merge — the reader's both-forms dedup only
 holds while two files coexist, so the merge must bake in no duplicates. A partition line that
 cannot be parsed is warn-and-skipped by the reader and the append-dedup, and kept verbatim by
-compact (it deletes its sources, so it never drops what it cannot parse).
+compact (it deletes its sources, so it never drops what it cannot parse). The `prune` command
+(`src/commands/prune.ts` → `src/store/prune.ts`) is retention: it deletes partition files for
+months older than `--keep-months` (counting the current month, which always survives);
+`--dry-run` previews, and a later backfill over a pruned window re-collects it.
 
 The `doctor` command (`src/commands/doctor.ts`) is the onboarding path: it inspects a repo's
 recent runs for report-looking artifacts and, if none, prints the exact reporter + `upload-artifact`
 YAML fix for the detected framework. The diagnosis is pure (`src/doctor/diagnose.ts`: `detectFramework`
-from `package.json` deps / a Java build file, then a `FRAMEWORK → fix` table) over signals gathered
-by the command via the GitHub contents API (`src/github/contents.ts`, integration).
+unions `package.json` deps across manifests / spots a Java build file, then a `FRAMEWORK → fix`
+table) over signals gathered by the command via the GitHub API (`src/github/contents.ts`,
+integration): one git-trees listing finds monorepo `package.json` files (shallow, capped 5,
+`node_modules` excluded — `packageJsonPaths`) and Java build files at any depth, falling back to
+root-only contents probes for huge/empty repos.
 
 Tier-3 artifact discovery (D9) lives in `fetchRun` (`src/artifacts/fetch.ts`): when a run has *no*
 report-name match, its remaining artifacts under `--max-artifact-mb` (default 100) are downloaded
@@ -126,19 +144,27 @@ Idempotency contract (D12): `collect` appends durably *first* (the append is fsy
 advances the watermark and saves state — so a crash between is recovered by re-collecting (the
 `(run_id, run_attempt, id, matrix)` dedup absorbs the overlap), never skipped. Running `collect`
 twice yields zero new writes. The watermark never passes an in-progress run; pending runs are also
-tracked by id in `pending_runs`. A `<state-file>.lock` single-writer lock (`src/state/lock.ts`)
-rejects a concurrent `collect` on the same state file, so the read-keys → append sequence never
-races itself. Error redaction (D6, `src/events/error.ts`) covers known token shapes, `user:pass@`
-URL credentials, bare JWTs, PEM private-key blocks, and query-string values.
+tracked by id in `pending_runs` and re-fetched by id once the window listing no longer surfaces
+them, so a wide `--hours-back` can never strand one. `state.json` is written atomically
+(temp + rename). A `<state-file>.lock` single-writer lock (`src/state/lock.ts`) rejects a
+concurrent `collect` on the same state file, so the read-keys → append sequence never races
+itself; a stale lock whose recorded pid is dead is auto-broken, and SIGINT/SIGTERM release the
+lock before exiting. Error redaction (D6, `src/events/error.ts`) covers known token shapes
+(GitHub, Slack, AWS, GitLab, npm, OpenAI-style), `user:pass@` URL credentials, bare JWTs, PEM
+private-key blocks, and query-string values; truncation caps the kept first line at the budget.
+The JUnit sniff is head-anchored and DOCTYPE-bearing documents parse with entity expansion off
+(no quadratic amplification); matrix cells serialize as JSON inside dedup/grouping keys
+(`stableMatrix` in `src/store/dedup.ts`) so cell content can never collide two cells.
 
 Adapter design: parsing is a pure `bytes → ParsedTest[]` transform; enrichment (`buildEvent` adds
 `id`/`run`, and the matrix — preferring a per-test `matrix` the adapter sets over the collect
 default) is separate and shared. Add new formats as adapters, not by touching the pipeline. The
 fetch loop takes an `onProgress` callback so `collect` can show live progress on long backfills.
-Playwright blob artifacts are double-zipped, so `extractZipNested` recurses one nested level. Pure logic (window, classification, repo parse, state, glob matching,
-partitioning, extract, fetch orchestration, redaction, fingerprint, JUnit parse, event build,
-dedup, watermark, NDJSON append) is unit-tested; only the raw Octokit calls (`listRunsSince`,
-`listRunArtifacts`, `downloadArtifactZip`) are left to integration. Artifact fetching runs up to
+Playwright blob artifacts are double-zipped, so `extractZipNested` recurses one nested level. Pure logic (window, classification, run filtering/capping, repo parse,
+state, glob matching, partitioning, prune cutoff, extract, fetch orchestration, redaction,
+fingerprint, JUnit parse, event build, dedup, watermark, NDJSON append, manifest-path
+selection) is unit-tested; only the raw Octokit calls (`listRunsSince`, `getRun`,
+`listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`) are left to integration. Artifact fetching runs up to
 `--concurrency` runs in parallel (`p-limit` pool, default 5): each run is processed into an
 isolated outcome, then outcomes are folded in input order so the summary and event order stay
 deterministic. Rate-limit/transient backoff lives at the transport (`client.ts`) via GitHub's

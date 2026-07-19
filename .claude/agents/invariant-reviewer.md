@@ -29,7 +29,11 @@ files and their immediate neighbours for context. Ground every finding in
 - The watermark advances **only after** a durable append — never before. A crash between
   append and watermark must re-collect (and dedup absorbs it), never skip. Flag any reorder
   that advances state first, or that lets the watermark pass an in-progress run.
-- In-progress/queued runs go to `pending_runs`, not collected.
+- In-progress/queued runs go to `pending_runs` (re-fetched by id on later collects), not
+  collected.
+- Watermark vs. skipped runs: policy-excluded runs (`--workflow`/`--exclude-trigger`) MAY be
+  passed by the watermark; `--max-runs`-deferred runs must NOT be (they are still owed
+  collection). Flag any change that blurs that line.
 
 **Errors (D6/D7)**
 - Failure messages are redacted + truncated by default (bypass only via `--full-errors`),

@@ -3,14 +3,48 @@ import { matchesReportArtifact } from "../github/artifacts.js";
 /** Test frameworks doctor can recognize and advise on. */
 export type Framework = "playwright" | "cypress" | "vitest" | "jest" | "mocha" | "java" | "unknown";
 
+/** Java build files that imply JUnit-format reports. */
+export const JAVA_BUILD_FILES = ["pom.xml", "build.gradle", "build.gradle.kts"];
+
+/** How many package.json manifests to read; root first, then the shallowest subdirectories. */
+const MANIFEST_LIMIT = 5;
+
+/** Deepest manifest considered, in path segments — `apps/web/package.json` yes, deeper no. */
+const MANIFEST_MAX_DEPTH = 3;
+
 /** What doctor observed about a repo, gathered from the GitHub API (pure input here). */
 export interface RepoSignals {
   /** Artifact names seen across the inspected runs. */
   artifactNames: string[];
-  /** Raw `package.json` contents, if the repo has one. */
-  packageJson?: string;
+  /** Raw `package.json` contents — the root one plus monorepo subpackages, when found. */
+  packageJsons?: string[];
   /** A Maven/Gradle build file is present (Java → JUnit-format reports). */
   hasJavaBuild?: boolean;
+}
+
+/**
+ * The `package.json` paths worth reading from a full tree listing: the root manifest and
+ * shallow monorepo packages (depth ≤ {@link MANIFEST_MAX_DEPTH}), never `node_modules`,
+ * shallowest first, capped at {@link MANIFEST_LIMIT} so a huge workspace stays cheap.
+ */
+export function packageJsonPaths(paths: string[]): string[] {
+  return paths
+    .filter(
+      (path) =>
+        (path === "package.json" || path.endsWith("/package.json")) &&
+        !path.includes("node_modules/") &&
+        path.split("/").length <= MANIFEST_MAX_DEPTH,
+    )
+    .sort((a, b) => a.split("/").length - b.split("/").length || (a < b ? -1 : 1))
+    .slice(0, MANIFEST_LIMIT);
+}
+
+/** True when a Java build file exists anywhere in the tree outside `node_modules`. */
+export function hasJavaBuildFile(paths: string[]): boolean {
+  return paths.some(
+    (path) =>
+      JAVA_BUILD_FILES.includes(path.split("/").at(-1) ?? "") && !path.includes("node_modules/"),
+  );
 }
 
 /** A concrete, copy-pasteable fix for a framework that uploads no parseable reports. */
@@ -35,11 +69,12 @@ export interface Diagnosis {
 
 /**
  * Detects the test framework from a repo's manifests. JS frameworks come from `package.json`
- * dependencies (most specific first: Playwright/Cypress before the generic runners); a Java
- * build file maps to JUnit-format Surefire/TestNG output.
+ * dependencies — unioned across every manifest so a monorepo's subpackage counts — most
+ * specific first (Playwright/Cypress before the generic runners); a Java build file maps to
+ * JUnit-format Surefire/TestNG output.
  */
 export function detectFramework(signals: RepoSignals): Framework {
-  const deps = parseDeps(signals.packageJson);
+  const deps = parseDeps(signals.packageJsons);
   if (deps) {
     if (deps.has("@playwright/test")) {
       return "playwright";
@@ -78,23 +113,34 @@ export function diagnose(signals: RepoSignals): Diagnosis {
   return { framework, uploadsReports, matchedArtifacts, fix: FIXES[framework] };
 }
 
-/** Reads the union of dependencies + devDependencies from a `package.json`, or null if unusable. */
-function parseDeps(packageJson: string | undefined): Set<string> | null {
-  if (!packageJson) {
+/**
+ * Unions dependencies + devDependencies across every readable `package.json`, or null when
+ * none is usable. An unparseable manifest is skipped, not fatal — the others still count.
+ */
+function parseDeps(packageJsons: string[] | undefined): Set<string> | null {
+  if (!packageJsons || packageJsons.length === 0) {
     return null;
   }
-  try {
-    const parsed = JSON.parse(packageJson) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    return new Set([
-      ...Object.keys(parsed.dependencies ?? {}),
-      ...Object.keys(parsed.devDependencies ?? {}),
-    ]);
-  } catch {
-    return null;
+  const deps = new Set<string>();
+  let readable = false;
+  for (const packageJson of packageJsons) {
+    try {
+      const parsed = JSON.parse(packageJson) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      readable = true;
+      for (const name of Object.keys(parsed.dependencies ?? {})) {
+        deps.add(name);
+      }
+      for (const name of Object.keys(parsed.devDependencies ?? {})) {
+        deps.add(name);
+      }
+    } catch {
+      // Skip this manifest; the others may still identify the framework.
+    }
   }
+  return readable ? deps : null;
 }
 
 const UPLOAD_NOTE = "# pin actions/upload-artifact to a SHA in real workflows";

@@ -36,8 +36,9 @@ collected data.
 
 ## D6 — Error storage: redacted + truncated by default
 
-Redact credentials, tokens, query strings; truncate to a configurable limit (~400 chars,
-first line always kept intact). `--full-errors` bypasses both.
+Redact credentials, tokens, query strings; truncate to a configurable limit (~400 chars —
+only the first line is kept, itself capped at the limit, so the budget holds even when the
+bloat is a single-line dump). `--full-errors` bypasses both.
 
 **Why:** failure messages embed huge HTML dumps, response bodies, and secrets; the analytical
 value lives in the first lines; clustering is the fingerprint's job (D7), not the message's.
@@ -61,7 +62,9 @@ A single Octokit transport. Token resolution chain: `--token` → `GITHUB_TOKEN`
 
 1. List names + sizes — no downloads.
 2. Download report-glob matches: `*report*`, `*result*`, `*junit*`, `*blob*`, `*mochawesome*`.
-3. Only if zero parseable reports were found, sniff remaining artifacts under
+   A match whose compressed size already exceeds the extraction budget is skipped (surfaced
+   as oversized) *before* download — it could only fail that budget after ballooning memory.
+3. Only if zero report-name matches were found, sniff remaining artifacts under
    `--max-artifact-mb` (default 100).
 
 **Why:** zero-config robustness at ~5% of pure sniff-all bandwidth; failure videos and traces
@@ -84,6 +87,8 @@ log-fallback ever lands.
 ## D12 — Crash safety / idempotency
 
 Dedup key = `(run_id, run_attempt, id, matrix)`. State advances **only after** a durable
-append. The watermark never passes an in-progress run.
+append. The watermark never passes an in-progress run; an in-progress run the window listing
+no longer surfaces (a wide `--hours-back` saw it once) is re-fetched by id from `pending_runs`
+until it completes, so advancing past it never loses it.
 
 **Why:** re-runs are always safe; nothing is silently skipped.

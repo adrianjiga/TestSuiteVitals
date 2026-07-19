@@ -20,6 +20,11 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[REDACTED]"],
   [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED]"],
   [/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED]"],
+  // GitLab PATs, npm automation tokens, OpenAI-style sk- keys (length floors keep short
+  // identifiers like CSS class names untouched).
+  [/\bglpat-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]"],
+  [/\bnpm_[A-Za-z0-9]{30,}\b/g, "[REDACTED]"],
+  [/\bsk-[A-Za-z0-9_-]{32,}\b/g, "[REDACTED]"],
   // Bare JWTs: three base64url segments, the first always starting eyJ ('{"').
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]"],
   // Credentials in a URL authority: scheme://user:pass@host (connection strings).
@@ -41,17 +46,18 @@ export function redactSecrets(text: string): string {
 }
 
 /**
- * Truncates over-long text (D6). When the text spans multiple lines, the whole first
- * line is kept and the rest dropped — failure messages put the signal on line one and
- * the bloat (HTML dumps, response bodies) on later lines. A single over-long line with
- * no newline is hard-capped at `limit`.
+ * Truncates over-long text (D6). When the text spans multiple lines, only the first line is
+ * kept — failure messages put the signal on line one and the bloat (HTML dumps, response
+ * bodies) on later lines. The kept portion is always hard-capped at `limit`: a single-line
+ * dump *is* the bloat (minified HTML on line one is common, and a hostile report can put
+ * megabytes there), so the budget must hold with or without a newline.
  */
 export function truncate(text: string, limit: number): string {
   if (text.length <= limit) {
     return text;
   }
   const newline = text.indexOf("\n");
-  const keep = newline === -1 ? limit : newline;
+  const keep = newline === -1 ? limit : Math.min(newline, limit);
   return `${text.slice(0, keep)} …[truncated]`;
 }
 

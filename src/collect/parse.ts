@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
-import { detectAndParse } from "../adapters/dispatch.js";
+import { type DetectedReport, detectAndParse } from "../adapters/dispatch.js";
 import type { RunReports } from "../artifacts/fetch.js";
 import { buildEvent, type RunContext, type TestEvent } from "../events/event.js";
 import type { WorkflowRun } from "../github/runs.js";
@@ -11,6 +11,8 @@ const CANDIDATE_EXTENSIONS = new Set([".xml", ".jsonl", ".json"]);
 export interface ParseSummary {
   filesScanned: number;
   filesParsed: number;
+  /** Candidate files that threw during read or parse — warned and skipped, never fatal (F1). */
+  filesFailed: number;
   eventsBuilt: number;
   passed: number;
   failed: number;
@@ -29,7 +31,15 @@ export interface ParseOptions {
 }
 
 function emptySummary(): ParseSummary {
-  return { filesScanned: 0, filesParsed: 0, eventsBuilt: 0, passed: 0, failed: 0, skipped: 0 };
+  return {
+    filesScanned: 0,
+    filesParsed: 0,
+    filesFailed: 0,
+    eventsBuilt: 0,
+    passed: 0,
+    failed: 0,
+    skipped: 0,
+  };
 }
 
 /**
@@ -54,8 +64,18 @@ export async function parseRunReports(
       }
       summary.filesScanned++;
 
-      const content = await readFile(file, "utf8");
-      const detected = detectAndParse(content, { fullErrors: options.fullErrors });
+      let detected: DetectedReport | null;
+      try {
+        const content = await readFile(file, "utf8");
+        detected = detectAndParse(content, { fullErrors: options.fullErrors });
+      } catch (error) {
+        // A truncated upload or a hostile document (invalid JSON past the sniff, pathological
+        // XML, absurd nesting) is deterministic content — retrying yields the same bytes — so
+        // it costs this one file, with a warning, never the whole collect (F1).
+        summary.filesFailed++;
+        console.warn(`Skipping unparseable report file ${file}: ${(error as Error).message}`);
+        continue;
+      }
       if (!detected) {
         continue;
       }

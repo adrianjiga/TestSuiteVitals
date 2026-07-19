@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { acquireLock, LockError } from "../src/state/lock.js";
 
 describe("acquireLock", () => {
@@ -34,5 +34,30 @@ describe("acquireLock", () => {
     await (await acquireLock(path))();
     const release = await acquireLock(path);
     await release();
+  });
+
+  it("breaks a stale lock whose holder is no longer running", async () => {
+    await writeFile(path, "12345\n", "utf8");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      const release = await acquireLock(path, { isPidAlive: () => false });
+      expect((await readFile(path, "utf8")).trim()).toBe(String(process.pid));
+      expect(warn).toHaveBeenCalledOnce();
+      await release();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("still fails when the recorded holder is alive", async () => {
+    await writeFile(path, "12345\n", "utf8");
+    await expect(acquireLock(path, { isPidAlive: () => true })).rejects.toThrow(LockError);
+  });
+
+  it("never breaks a lock without a readable pid", async () => {
+    // A garbled lock file could belong to anything — conservative: require the manual delete.
+    await writeFile(path, "not-a-pid\n", "utf8");
+    await expect(acquireLock(path, { isPidAlive: () => false })).rejects.toThrow(LockError);
   });
 });

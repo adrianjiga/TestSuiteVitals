@@ -57,6 +57,18 @@ describe("aggregate grouping", () => {
     expect(rows.every((r) => r.totalRuns === 1)).toBe(true);
     expect(rows.map((r) => r.matrix?.browser).sort()).toEqual(["chrome", "firefox"]);
   });
+
+  it("keeps cells apart whose flattened forms would collide", () => {
+    // A `key=value,…` cell key renders both of these as `a=x,b=y` and would merge them.
+    const rows = aggregate(
+      [
+        ev({ matrix: { a: "x,b=y" }, run: { run_id: 1, sha: "s1" } }),
+        ev({ matrix: { a: "x", b: "y" }, run: { run_id: 1, sha: "s1" } }),
+      ],
+      { byMatrix: true },
+    );
+    expect(rows).toHaveLength(2);
+  });
 });
 
 describe("aggregate signals", () => {

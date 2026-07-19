@@ -13,6 +13,12 @@
   ],
   "license": "MIT",
   "author": "Adrian Jiga",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adrianjiga/TestSuiteVitals.git"
+  },
+  "bugs": "https://github.com/adrianjiga/TestSuiteVitals/issues",
+  "homepage": "https://github.com/adrianjiga/TestSuiteVitals#readme",
   "type": "module",
   "engines": {
     "node": ">=24"

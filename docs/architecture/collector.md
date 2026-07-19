@@ -8,8 +8,10 @@ suitevitals collect
   --config <path>         repos + per-repo overrides
   --hours-back <n>        explicit backfill window
   --concurrency <n>       default 5
-  --workflow <glob>       default: all workflows
-  --max-artifact-mb <n>   default 100 (tier-2 sniff guard)
+  --workflow <glob>       only collect matching workflows (default: all)
+  --exclude-trigger <l>   skip runs fired by these events (comma-separated)
+  --max-runs <n>          cap completed runs per invocation, oldest first
+  --max-artifact-mb <n>   default 100 (tier-3 sniff cap)
   --dry-run               show what would be fetched
   --full-errors
 ```
@@ -27,15 +29,23 @@ silently.
 1. **Load state** → watermark + `pending_runs`.
 2. **List runs** — paginate runs newest-first; stop past the window; re-check `pending_runs`
    explicitly.
-3. **Classify** — completed → collect; in-progress/queued → `pending_runs`; the watermark does
-   not advance past them.
+3. **Filter & classify** — `--workflow`/`--exclude-trigger` drop runs by policy (the watermark
+   *may* pass those, or excluding a busy workflow would stall it forever); the rest classify as
+   completed → collect, in-progress/queued → `pending_runs` (the watermark does not advance
+   past them). `--max-runs` then caps the completed set oldest-first; the watermark never
+   passes a deferred run, so the newer remainder is collected next invocation.
 4. **Fetch artifacts** (tiered, [D9](decisions.md#d9--artifact-discovery-tiered)) into a temp
-   dir; expired artifacts are counted and reported. Extraction enforces a decompressed-size
-   budget (default 500 MB, checked from the zip's declared entry sizes *before* inflating), so
-   a zip bomb is counted as oversized and skipped, never inflated.
+   dir; expired artifacts are counted and reported. A report match whose *compressed* size
+   already exceeds the extraction budget is skipped (as oversized) before download, so it can
+   never balloon memory. Extraction enforces a decompressed-size budget (default 500 MB,
+   checked from the zip's declared entry sizes *before* inflating), so a zip bomb is counted
+   as oversized and skipped, never inflated; any other extraction failure (corrupt or hostile
+   archive) costs that one artifact, with a warning — download errors still abort the repo,
+   since they are transient and the watermark has not advanced.
 5. **Adapter dispatch** by sniffing extracted files: `<testsuites>` root → JUnit; JSON with
    `config` + `suites` → Playwright; JSON with `stats` + `results` → Mochawesome. A per-repo
-   config override wins over sniffing.
+   config override wins over sniffing. A candidate file that throws during read or parse is
+   warned and skipped, never fatal.
 6. **Normalize & append** events with dedup; the append is fsynced, and state is updated only
    after it succeeds. A single-writer lock (`<state-file>.lock`) rejects a concurrent collect
    on the same state file, so the read-keys → append sequence never races itself.
@@ -61,10 +71,16 @@ silently.
   in both forms (crash mid-compaction, late backfill), the merge de-duplicates by key — the
   reader's both-forms dedup only holds while two files coexist, so the merge must bake in no
   duplicates.
+- `suitevitals prune --keep-months <n>` — **implemented**: retention. Deletes partition files
+  (either form) for months older than the kept window; the current month always survives, and
+  `--dry-run` previews. A later backfill over a pruned window re-collects it (the dedup keys
+  were deleted with the files).
 - `suitevitals doctor --repo <owner/name>` — **implemented**: inspects recent runs; if no report
   artifacts are uploaded, detects the framework from the repo's manifests and prints the exact
   reporter + `upload-artifact` YAML fix. Pure diagnosis (`src/doctor/diagnose.ts`) over signals
-  gathered from the GitHub API.
+  gathered from the GitHub API — one git-trees listing covers monorepo `package.json` files
+  (shallow, capped, `node_modules` excluded) and Java build files at any depth, with root-only
+  probing as the fallback for huge/empty repos.
 
 ## Implementation status
 
@@ -127,7 +143,10 @@ with per-repo `hoursBack`/`concurrency` overrides, plus config-level defaults. S
 most-specific-wins: per-repo value → CLI flag → config default → built-in; a repo named twice is
 de-duplicated. The repos share one client, state file, and data dir and are collected in
 sequence; state is keyed per repo (its own watermark), and is saved after each repo so a crash
-partway through keeps the repos already collected (D12, extended across the loop).
+partway through keeps the repos already collected (D12, extended across the loop). One repo's
+failure (revoked access, a deleted repo, an outage) is reported — with a non-zero exit code —
+and the remaining repos still collect; the failed repo's watermark is untouched, so the next
+collect simply retries it.
 
 A hardening pass (2026-07-11) closed the robustness gaps a security scan surfaced: extraction
 enforces the decompressed-size budget above (zip bombs are counted as oversized, never inflated);
@@ -139,6 +158,40 @@ appends fsync before the watermark advances, making the
 [D12](decisions.md#d12--crash-safety--idempotency) "durable append" literal; `collect` takes a
 `<state-file>.lock` single-writer lock; repo refs reject `.`/`..` segments; and `doctor`
 tolerates >1 MB manifests (the contents API returns `encoding: "none"` for those).
+
+A second hardening pass (2026-07-18) closed what a full-project security review surfaced.
+Report artifacts whose compressed size already exceeds the extraction budget are skipped (and
+counted as oversized) *before* download; a corrupt or hostile archive, and an unparseable
+report file, cost only that artifact or file (download errors still abort the repo — they are
+transient, and aborting before the watermark advances is what makes them safe to retry); one
+repo's failure no longer stops a multi-repo run. Tracked `pending_runs` are now genuinely
+re-fetched by id, so a wide `--hours-back` window can no longer strand an old in-progress run
+behind the watermark. `state.json` is written atomically (temp file + rename); a stale lock
+whose recorded pid is gone is broken automatically, and SIGINT/SIGTERM release the lock before
+exiting. The JUnit sniff is anchored to the document head (a JSON report merely quoting
+`<testsuite` is never misrouted), and DOCTYPE-bearing JUnit documents parse with XML entity
+expansion disabled (blocks quadratic entity amplification). The
+[D6](decisions.md#d6--error-storage-redacted--truncated-by-default) truncation budget now caps
+the kept first line too, and redaction also covers GitLab, npm, and OpenAI-style token shapes.
+Matrix cells serialize as JSON inside dedup/grouping keys, so cell content (`,`, `=`) can never
+make two different cells collide. CI runs with a read-only token and audits production
+dependencies.
+
+A functionality pass (2026-07-19) added the levers the review asked for: collect-time
+`--workflow`/`--exclude-trigger` filters (`src/collect/filter.ts`, also per-repo/config-level
+settings resolved most-specific-wins — and the security lever that keeps fork-PR artifacts out
+entirely), a `--max-runs` oldest-first cap for bounded backfills, `--branch`/`--workflow`
+filters on `report` and `dashboard`, the `prune` retention command, and monorepo-aware
+`doctor`.
+
+### Known gaps
+
+Run listing filters by *creation* time (`created>=…`), and a GitHub re-run keeps the original
+run's `created_at`. Two consequences: a re-run of a run created before the current window is
+not seen (its new attempt is collected only if a later `--hours-back` backfill covers the
+creation date), and when such a backfill does re-collect a re-run, artifacts persisted from
+attempt 1 are recorded under the new attempt number — a different dedup key, so those events
+can double-count. Both are edge cases of the `rerun` signal, not the core pass/fail history.
 
 The collector is **v1 feature-complete (M1–M5)**. M1 was the idempotent walking skeleton; M2 added
 the Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency,

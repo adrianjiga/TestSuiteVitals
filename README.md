@@ -7,7 +7,7 @@ you already upload and tells you which tests are flaky, how badly, and where.
 No server, no instrumentation changes — point it at a GitHub repo, and it
 normalizes the test-report artifacts into plain files you own.
 
-> **Status:** v1 feature-complete (M1–M5: collect, report, dashboard, compact, doctor). Not yet published to npm.
+> **Status:** v1 feature-complete (M1–M5: collect, report, dashboard, compact, prune, doctor). Not yet published to npm.
 
 ## Documentation
 
@@ -60,6 +60,9 @@ suitevitals collect --config repos.json                 # repos from a config fi
 | `--state-file <path>` | Path to the state file (default `state.json`). |
 | `--data-dir <path>` | Directory for the NDJSON event partitions (default `data`). |
 | `--concurrency <n>` | Number of runs to fetch in parallel (default 5). |
+| `--workflow <glob>` | Only collect runs of workflows matching this glob (`*` wildcard; default all). |
+| `--exclude-trigger <list>` | Skip runs fired by these events (comma-separated, e.g. `pull_request`). |
+| `--max-runs <n>` | Process at most this many completed runs per repo; the rest resume next run. |
 | `--max-artifact-mb <n>` | Size cap when sniffing unnamed artifacts for reports (default 100). |
 | `--full-errors` | Store full error messages without redaction or truncation. |
 | `--dry-run` | Show what would be fetched without writing any data. |
@@ -69,11 +72,16 @@ run for a repo, collection defaults to the last 72 hours; afterwards it resumes 
 stored watermark. Re-running is always safe — overlapping windows are de-duplicated.
 
 Collection is guarded against the usual hazards: a `<state-file>.lock` file rejects a second
-`collect` on the same state file (delete it if a crashed run left it behind); an artifact that
-would decompress past a 500 MB budget is skipped and reported instead of exhausting memory; and
-a corrupt line in a partition is skipped with a warning rather than failing the run. Error
-messages are redacted by default — known token shapes, `user:pass@` URL credentials, JWTs, PEM
-private-key blocks, and query-string values — and truncated; `--full-errors` bypasses both.
+`collect` on the same state file (a stale lock whose recorded pid is gone is broken
+automatically, and Ctrl-C releases the lock on the way out); an artifact that would decompress
+past a 500 MB budget is skipped and reported instead of exhausting memory — a report artifact
+already bigger than that budget is skipped before it is even downloaded; a corrupt archive or an
+unparseable report file costs that one artifact or file, with a warning, never the run; in a
+multi-repo invocation a failing repo is reported and the rest still collect; and a corrupt line
+in a partition is skipped with a warning rather than failing the run. Error messages are
+redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, OpenAI-style),
+`user:pass@` URL credentials, JWTs, PEM private-key blocks, and query-string values — and
+truncated to a budget that holds even for single-line dumps; `--full-errors` bypasses both.
 
 ### Config file
 
@@ -85,17 +93,21 @@ applied to every repo:
 {
   "hoursBack": 72,
   "concurrency": 5,
+  "excludeTriggers": ["pull_request"],
   "repos": [
     "owner/web-app",
-    { "repo": "owner/api", "hoursBack": 168, "concurrency": 2 }
+    { "repo": "owner/api", "hoursBack": 168, "concurrency": 2, "workflow": "e2e-*" }
   ]
 }
 ```
 
-Settings resolve most-specific-wins: a per-repo value beats a `--hours-back`/`--concurrency`
-CLI flag, which beats the config-level default, which beats the built-in. A repo named on
-both the CLI and in the config is collected once. Repos share one state file and data
-directory; state is keyed per repo, so each has its own independent watermark.
+Settings resolve most-specific-wins: a per-repo value beats the matching CLI flag
+(`--hours-back`/`--concurrency`/`--workflow`/`--exclude-trigger`), which beats the config-level
+default, which beats the built-in. A repo named on both the CLI and in the config is collected
+once. Repos share one state file and data directory; state is keyed per repo, so each has its
+own independent watermark. Filtered-out runs are policy skips: the watermark may pass them, so
+excluding a noisy workflow never stalls collection. `--exclude-trigger pull_request` is also
+the lever that keeps fork-PR-uploaded artifacts out of your data entirely.
 
 ## Reporting
 
@@ -112,6 +124,8 @@ suitevitals report --repo <owner/name> [options]
 | `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
 | `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |
 | `--since <Nd\|ISO>` | Only include runs in the window (e.g. `30d`, `12h`, or a timestamp). |
+| `--branch <name>` | Only include runs on this branch (exact match, e.g. `main`). |
+| `--workflow <glob>` | Only include runs of workflows matching this glob (`*` wildcard). |
 | `--limit <n>` | Show at most this many ranked tests (default 20). |
 | `--all` | Also show tests below the min-runs threshold. |
 | `--json` | Emit JSON instead of the table. |
@@ -149,6 +163,8 @@ suitevitals dashboard --repo <owner/name> [-o out.html] [--by-matrix] [--min-run
 | `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
 | `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |
 | `--since <Nd\|ISO>` | Only include runs in the window (e.g. `30d`). |
+| `--branch <name>` | Only include runs on this branch (exact match, e.g. `main`). |
+| `--workflow <glob>` | Only include runs of workflows matching this glob (`*` wildcard). |
 
 The output is a single HTML file with inline CSS and no runtime dependencies — open it, screenshot
 it, commit it, or host it anywhere.
@@ -169,6 +185,21 @@ compacts only what is new — and crash-safe: if a month is left in both forms (
 mid-compaction, or a late backfill into a compacted month), the next run merges them into one
 `.zst`, de-duplicating any overlap so nothing ever double-counts.
 
+### Prune
+
+History grows month by month; `prune` applies a retention window by deleting partition files
+older than it:
+
+```bash
+suitevitals prune --keep-months <n> [--repo <owner/name>] [--data-dir <path>] [--dry-run]
+```
+
+`--keep-months` counts the current month, so `--keep-months 12` keeps a rolling year and the
+open month always survives. With no `--repo`, every repo in the data directory is pruned;
+`--dry-run` lists what would be deleted without touching anything. Pruned months disappear from
+reports immediately; if the underlying artifacts still exist on GitHub, a later `--hours-back`
+backfill re-collects them (the dedup keys were deleted with the files).
+
 ### Doctor
 
 Not sure a repo is set up for collection? `doctor` inspects its recent runs and tells you whether
@@ -180,16 +211,19 @@ suitevitals doctor --repo <owner/name>
 ```
 
 It detects the framework from the repo's manifests (Playwright, Cypress, Vitest, Jest, Mocha, or
-Java/JUnit) and either confirms collection will work or hands you copy-pasteable YAML to make it
-work. This is the zero-to-collecting onboarding path.
+Java/JUnit) — including monorepos: one tree listing finds `package.json` files in shallow
+subdirectories and Java build files at any depth — and either confirms collection will work or
+hands you copy-pasteable YAML to make it work. This is the zero-to-collecting onboarding path.
 
 > **Status (v1 feature-complete, M1–M5):** `collect` ingests **JUnit**, **Playwright blob**, and
 > **mochawesome** reports from one or more repos (repeatable `--repo` or a `--config` file) into
-> dedup'd monthly NDJSON partitions, in parallel with rate-limit backoff, and falls back to sniffing
-> unnamed artifacts (under `--max-artifact-mb`) when a run has no name match. `report` streams those
-> partitions back, aggregates per-test flake signals, scores them, and prints a ranked terminal table
-> (or JSON); `dashboard` renders the same ranking as a self-contained HTML monitor; `compact`
-> zstd-compresses closed months; `doctor` diagnoses a repo's report setup.
+> dedup'd monthly NDJSON partitions, in parallel with rate-limit backoff, with workflow/trigger
+> filters and a `--max-runs` cap, and falls back to sniffing unnamed artifacts (under
+> `--max-artifact-mb`) when a run has no name match. `report` streams those partitions back,
+> aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON),
+> filterable by `--since`/`--branch`/`--workflow`; `dashboard` renders the same ranking as a
+> self-contained HTML monitor; `compact` zstd-compresses closed months; `prune` applies a
+> retention window; `doctor` diagnoses a repo's report setup, monorepos included.
 
 ## License
 
