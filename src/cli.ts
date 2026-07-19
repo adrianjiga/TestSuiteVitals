@@ -4,6 +4,7 @@ import { collectCommand } from "./commands/collect.js";
 import { compactCommand } from "./commands/compact.js";
 import { dashboardCommand } from "./commands/dashboard.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { pruneCommand } from "./commands/prune.js";
 import { reportCommand } from "./commands/report.js";
 
 const main = defineCommand({
@@ -17,6 +18,7 @@ const main = defineCommand({
     report: reportCommand,
     dashboard: dashboardCommand,
     compact: compactCommand,
+    prune: pruneCommand,
     doctor: doctorCommand,
   },
 });
