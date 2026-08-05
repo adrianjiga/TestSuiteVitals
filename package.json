@@ -41,8 +41,8 @@
   },
   "dependencies": {
     "@mongodb-js/zstd": "^7.0.0",
-    "@octokit/plugin-retry": "^8.1.0",
-    "@octokit/plugin-throttling": "^11.0.3",
+    "@octokit/plugin-retry": "^8.1.1",
+    "@octokit/plugin-throttling": "^11.0.5",
     "@octokit/rest": "^22.0.1",
     "citty": "^0.2.2",
     "fast-xml-parser": "^5.10.1",
