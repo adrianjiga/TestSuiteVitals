@@ -16,10 +16,21 @@ export interface ArtifactFetcher {
   download(artifactId: number): Promise<Uint8Array>;
 }
 
+/**
+ * One extracted file, tagged with the artifact it came from. The artifact name is the only
+ * per-matrix-cell signal a run carries for formats that embed no matrix of their own (JUnit,
+ * mochawesome) — a CI matrix job uploads its own artifact, so the name identifies the cell.
+ * Dropping it made every cell's result for a test share one dedup key, silently collapsing them.
+ */
+export interface ExtractedFile {
+  path: string;
+  artifact: string;
+}
+
 /** Extracted report files for a single run. */
 export interface RunReports {
   run: WorkflowRun;
-  files: string[];
+  files: ExtractedFile[];
 }
 
 export interface ArtifactFetchSummary {
@@ -37,6 +48,8 @@ export interface ArtifactFetchSummary {
   failedArtifacts: number;
   /** Non-report artifacts left un-examined (a name match existed, so tier-3 did not run). */
   skippedArtifacts: number;
+  /** Artifacts dropped by an --exclude-artifact glob, before download. */
+  excludedArtifacts: number;
 }
 
 export interface ArtifactFetchResult {
@@ -55,6 +68,8 @@ export interface ArtifactFetchOptions {
   maxArtifactMb?: number;
   /** Decompressed-size budget (MB) per archive. Defaults to {@link DEFAULT_MAX_EXTRACT_MB}. */
   maxExtractMb?: number;
+  /** Artifact-name globs to drop before any tier considers them (e.g. a merged roll-up). */
+  excludeArtifacts?: string[];
 }
 
 /** What one run contributed, computed in isolation so runs can be fetched in parallel. */
@@ -67,7 +82,8 @@ interface RunOutcome {
   oversizedArtifacts: number;
   failedArtifacts: number;
   skippedArtifacts: number;
-  files: string[];
+  excludedArtifacts: number;
+  files: ExtractedFile[];
 }
 
 function emptySummary(): ArtifactFetchSummary {
@@ -82,6 +98,7 @@ function emptySummary(): ArtifactFetchSummary {
     oversizedArtifacts: 0,
     failedArtifacts: 0,
     skippedArtifacts: 0,
+    excludedArtifacts: 0,
   };
 }
 
@@ -108,6 +125,7 @@ export async function fetchReportArtifacts(
     concurrency = DEFAULT_CONCURRENCY,
     maxArtifactMb = DEFAULT_MAX_ARTIFACT_MB,
     maxExtractMb = DEFAULT_MAX_EXTRACT_MB,
+    excludeArtifacts = [],
   } = options;
   const limit = pLimit(Math.max(1, concurrency));
   const maxArtifactBytes = maxArtifactMb * 1024 * 1024;
@@ -124,6 +142,7 @@ export async function fetchReportArtifacts(
           dryRun,
           maxArtifactBytes,
           maxExtractBytes,
+          excludeArtifacts,
         );
         completed++;
         onProgress?.(completed, runs.length);
@@ -150,9 +169,10 @@ async function fetchRun(
   dryRun: boolean,
   maxArtifactBytes: number,
   maxExtractBytes: number,
+  excludeArtifacts: string[],
 ): Promise<RunOutcome> {
   const artifacts = await fetcher.list(run.run_id);
-  const partition = partitionArtifacts(artifacts);
+  const partition = partitionArtifacts(artifacts, excludeArtifacts);
   let oversized = 0;
 
   // Tier 2: a report match whose *compressed* size already exceeds the decompressed-size budget
@@ -181,14 +201,15 @@ async function fetchRun(
     }
   }
 
-  const files: string[] = [];
+  const files: ExtractedFile[] = [];
   let failed = 0;
   if (!dryRun) {
     for (const artifact of [...toDownload, ...toSniff]) {
       const zip = await fetcher.download(artifact.id);
       const dest = join(workdir, String(run.run_id), String(artifact.id));
       try {
-        files.push(...(await extractZipNested(zip, dest, 2, maxExtractBytes)));
+        const paths = await extractZipNested(zip, dest, 2, maxExtractBytes);
+        files.push(...paths.map((path) => ({ path, artifact: artifact.name })));
       } catch (error) {
         // A zip bomb (declared size past the extraction budget) is counted as oversized and
         // skipped — surfaced in the summary, never allowed to OOM the whole collection (F1).
@@ -220,6 +241,7 @@ async function fetchRun(
     failedArtifacts: failed,
     // When tier-3 ran, the skipped bucket was examined (sniffed/oversized); otherwise it is left alone.
     skippedArtifacts: sniffRun ? 0 : partition.skipped.length,
+    excludedArtifacts: partition.excluded.length,
     files,
   };
 }
@@ -241,6 +263,7 @@ function foldOutcomes(outcomes: RunOutcome[]): ArtifactFetchResult {
     if (outcome.expiredArtifacts > 0) {
       summary.runsWithExpired++;
     }
+    summary.excludedArtifacts += outcome.excludedArtifacts;
     summary.filesExtracted += outcome.files.length;
     if (outcome.files.length > 0) {
       reports.push({ run: outcome.run, files: outcome.files });

@@ -2,9 +2,13 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RunReports } from "../src/artifacts/fetch.js";
+import type { ExtractedFile, RunReports } from "../src/artifacts/fetch.js";
+import { compileMatrixPattern } from "../src/collect/matrix.js";
 import { parseRunReports } from "../src/collect/parse.js";
 import type { WorkflowRun } from "../src/github/runs.js";
+
+/** An extracted file tagged with the artifact it came from. */
+const file = (path: string, artifact: string): ExtractedFile => ({ path, artifact });
 
 const run: WorkflowRun = {
   run_id: 7,
@@ -34,12 +38,63 @@ describe("parseRunReports", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("keeps one run's matrix cells distinct under the dedup key", async () => {
+    // The regression this guards: with an empty matrix, every cell's result for a test shared
+    // the dedup key (run_id, run_attempt, id, matrix) — so the first written won and the rest
+    // were dropped. A test failing only on Firefox was undetectable.
+    const chrome = join(dir, "chrome.xml");
+    const firefox = join(dir, "firefox.xml");
+    await writeFile(chrome, JUNIT);
+    await writeFile(firefox, JUNIT);
+
+    const { events } = await parseRunReports(
+      [
+        {
+          run,
+          files: [
+            file(chrome, "cypress-results-ui-chrome-desktop"),
+            file(firefox, "cypress-results-ui-firefox-desktop"),
+          ],
+        },
+      ],
+      "owner/name",
+      {
+        now: new Date("2026-06-23T12:00:00Z"),
+        matrixPattern: compileMatrixPattern(
+          "cypress-results-(?<group>[^-]+)-(?<browser>[^-]+)-(?<viewport>[^-]+)",
+        ),
+      },
+    );
+
+    // Same tests, same run — but two cells, so two distinct dedup keys per test.
+    const keys = new Set(events.map((e) => `${e.id}|${JSON.stringify(e.matrix)}`));
+    expect(keys.size).toBe(events.length);
+    expect(new Set(events.map((e) => e.matrix?.browser))).toEqual(new Set(["chrome", "firefox"]));
+    // Identity is unchanged by the cell (D5) — both cells report the same tests.
+    expect(new Set(events.map((e) => e.id)).size).toBe(2);
+  });
+
+  it("tags events with the opaque artifact name when no pattern is given", async () => {
+    const xml = join(dir, "junit.xml");
+    await writeFile(xml, JUNIT);
+
+    const { events } = await parseRunReports(
+      [{ run, files: [file(xml, "test-reports-ui")] }],
+      "owner/name",
+      { now: new Date("2026-06-23T12:00:00Z") },
+    );
+
+    expect(events[0]?.matrix).toEqual({ artifact: "test-reports-ui" });
+  });
+
   it("parses JUnit files and enriches events with run context", async () => {
     const xml = join(dir, "junit.xml");
     const html = join(dir, "report.html");
     await writeFile(xml, JUNIT);
     await writeFile(html, "<html>not a report</html>");
-    const reports: RunReports[] = [{ run, files: [xml, html] }];
+    const reports: RunReports[] = [
+      { run, files: [file(xml, "junit-results"), file(html, "junit-results")] },
+    ];
 
     const { events, summary } = await parseRunReports(reports, "owner/name", {
       now: new Date("2026-06-23T12:00:00Z"),
@@ -75,7 +130,7 @@ describe("parseRunReports", () => {
 
     try {
       const { events, summary } = await parseRunReports(
-        [{ run, files: [broken, good] }],
+        [{ run, files: [file(broken, "reports"), file(good, "reports")] }],
         "owner/name",
       );
 
