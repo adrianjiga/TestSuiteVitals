@@ -70,6 +70,45 @@ describe("parseJUnit", () => {
     expect(parseJUnit(xml)[0]?.title_path).toEqual(["a & b"]);
   });
 
+  it("prefers classname over the suite name so identity survives the suite layout", () => {
+    // Surefire emits a different <testsuite name> for the same test depending on which TestNG
+    // suite XML drove the run. Ranking that name above `classname` split one test's history
+    // three ways. All three shapes below must resolve to the same file + title_path.
+    const viaFullSuite = `<testsuites><testsuite name="TestSuite">
+      <testcase classname="com.example.WebTablesTest" name="testAddRecord" time="1"/>
+    </testsuite></testsuites>`;
+    const viaUiSuite = `<testsuites><testsuite name="UI Tests">
+      <testcase classname="com.example.WebTablesTest" name="testAddRecord" time="1"/>
+    </testsuite></testsuites>`;
+    const viaPerClassFile = `<testsuite name="com.example.WebTablesTest">
+      <testcase classname="com.example.WebTablesTest" name="testAddRecord" time="1"/>
+    </testsuite>`;
+
+    const identities = [viaFullSuite, viaUiSuite, viaPerClassFile].map((xml) => {
+      const [test] = parseJUnit(xml);
+      return `${test?.file}::${test?.title_path.join(" > ")}`;
+    });
+
+    expect(identities[0]).toBe("com.example.WebTablesTest::testAddRecord");
+    expect(new Set(identities).size).toBe(1);
+  });
+
+  it("still falls back to the suite name when there is no classname or file", () => {
+    const xml = '<testsuite name="pytest"><testcase name="test_thing" time="0"/></testsuite>';
+    const [test] = parseJUnit(xml);
+    expect(test?.file).toBe("pytest");
+    expect(test?.title_path).toEqual(["test_thing"]);
+  });
+
+  it("keeps a real path attribute ahead of classname", () => {
+    const xml = `<testsuite name="Web Tables" file="tests/webTables.spec.ts">
+      <testcase classname="SomeOtherLabel" name="adds a record" time="0"/>
+    </testsuite>`;
+    const [test] = parseJUnit(xml);
+    expect(test?.file).toBe("tests/webTables.spec.ts");
+    expect(test?.title_path).toEqual(["SomeOtherLabel", "adds a record"]);
+  });
+
   it("does not expand DOCTYPE-declared entities (amplification guard)", () => {
     // One long entity referenced many times expands quadratically; a DOCTYPE-bearing
     // document must parse with entity processing off, leaving references literal.

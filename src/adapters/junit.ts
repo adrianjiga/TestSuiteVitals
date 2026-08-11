@@ -55,9 +55,10 @@ export function parseJUnit(xml: string, options: RedactOptions = {}): ParsedTest
   const tests: ParsedTest[] = [];
 
   for (const suite of suites) {
-    const suiteFile = str(suite["@_file"]) ?? str(suite["@_name"]);
+    const suiteFile = str(suite["@_file"]);
+    const suiteName = str(suite["@_name"]);
     for (const testcase of asArray(suite.testcase)) {
-      tests.push(parseTestcase(testcase, suiteFile, options));
+      tests.push(parseTestcase(testcase, suiteFile, suiteName, options));
     }
   }
 
@@ -76,11 +77,27 @@ function collectSuites(root: XmlNode): XmlNode[] {
 function parseTestcase(
   tc: XmlNode,
   suiteFile: string | undefined,
+  suiteName: string | undefined,
   options: RedactOptions,
 ): ParsedTest {
   const name = str(tc["@_name"]) ?? "(unnamed test)";
   const classname = str(tc["@_classname"]);
-  const file = str(tc["@_file"]) ?? suiteFile ?? classname ?? "unknown";
+  /**
+   * Resolution order matters for test identity (D5: `id = hash(file + title_path)`).
+   *
+   * `classname` is preferred over `<testsuite name>` because the suite name is a *run
+   * configuration label*, not a location — and the same test emits a different one depending
+   * on how the run was invoked. TestNG/Surefire is the clearest case: one test yields
+   * `name="TestSuite"` under `testng.xml`, `name="UI Tests"` under `testng-ui.xml`, and a
+   * class-named suite element when Surefire emits per-class files. Ranking that ahead of
+   * `classname` minted three identities for one test and split its history three ways.
+   * pytest has the same shape at lower stakes (`<testsuite name="pytest">` for the whole run).
+   *
+   * Genuine path attributes still win: `<testcase file>` then `<testsuite file>` are real
+   * locations when an emitter provides them. The suite name survives last, so a report with
+   * neither a path nor a classname is unaffected.
+   */
+  const file = str(tc["@_file"]) ?? suiteFile ?? classname ?? suiteName ?? "unknown";
   const titlePath = classname && classname !== file ? [classname, name] : [name];
   const durationMs = Math.round((Number(tc["@_time"]) || 0) * 1000);
 

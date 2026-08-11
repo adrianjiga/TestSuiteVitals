@@ -34,6 +34,21 @@ dimension, never identity**. "Matrix joins identity" is a **report-time** groupi
 **Why:** one canonical history per test; changing the grouping setting never orphans
 collected data.
 
+**Corollary — `file` must be a location, never a run label.** Identity is only stable if both
+inputs are. Adapters therefore resolve `file` from the most location-like attribute available
+and never from something that varies with *how the run was invoked*. The JUnit adapter learned
+this the hard way: it ranked `<testsuite name>` above `<testcase classname>`, and TestNG/Surefire
+emits a different suite name per suite XML (`TestSuite` for `testng.xml`, `UI Tests` for
+`testng-ui.xml`, the class name when Surefire writes per-class files). One test picked up three
+identities and its history split three ways. Resolution order is now
+`testcase@file → testsuite@file → classname → testsuite@name → "unknown"`.
+
+**Caveat this decision does not cover:** the "never orphans collected data" guarantee is about
+the report-time `--by-matrix` toggle. An identity *bug fix* necessarily re-keys history, and
+there is no migration path — the affected repo's partitions must be deleted and re-collected,
+bounded by GitHub's artifact retention. Weigh that cost before changing how any adapter resolves
+`file` or `title_path`.
+
 ## D6 — Error storage: redacted + truncated by default
 
 Redact credentials, tokens, query strings; truncate to a configurable limit (~400 chars —
