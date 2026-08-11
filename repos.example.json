@@ -1,0 +1,17 @@
+{
+  "hoursBack": 720,
+  "concurrency": 5,
+  "excludeTriggers": ["pull_request"],
+  "repos": [
+    {
+      "repo": "adrianjiga/CypressAutomationExample",
+      "excludeArtifacts": ["final-test-report"],
+      "matrixFromArtifact": "cypress-results-(?<group>[^-]+)-(?:(?<browser>chrome|firefox|edge)-)?(?<viewport>[^-]+)"
+    },
+    {
+      "repo": "adrianjiga/SeleniumAutomationExample",
+      "matrixFromArtifact": "test-reports-(?<group>[a-z]+)"
+    },
+    "adrianjiga/PlaywrightAutomationExample"
+  ]
+}

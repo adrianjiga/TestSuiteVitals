@@ -158,7 +158,14 @@ The JUnit sniff is head-anchored and DOCTYPE-bearing documents parse with entity
 
 Adapter design: parsing is a pure `bytes → ParsedTest[]` transform; enrichment (`buildEvent` adds
 `id`/`run`, and the matrix — preferring a per-test `matrix` the adapter sets over the collect
-default) is separate and shared. Add new formats as adapters, not by touching the pipeline. The
+default) is separate and shared. The collect default comes from the **artifact name**
+(`src/collect/matrix.ts`): a matrix job uploads its own artifact, so the name is the cell. This is
+not cosmetic — the dedup key includes `matrix`, so an always-empty one collapsed every cell of a
+test onto one key and silently dropped all but the first (a Firefox-only failure was undetectable).
+`--matrix-from-artifact` takes a regex whose named groups become the dimensions; without one the
+cell is the opaque `{ artifact: <name> }`. `--exclude-artifact` drops roll-up artifacts by glob
+before download, so a merged report cannot double-count the per-cell results. Extraction tags each
+file with its source artifact (`ExtractedFile`); do not flatten that away again. Add new formats as adapters, not by touching the pipeline. The
 fetch loop takes an `onProgress` callback so `collect` can show live progress on long backfills.
 Playwright blob artifacts are double-zipped, so `extractZipNested` recurses one nested level. Pure logic (window, classification, run filtering/capping, repo parse,
 state, glob matching, partitioning, prune cutoff, extract, fetch orchestration, redaction,
