@@ -4,6 +4,7 @@ import { type DetectedReport, detectAndParse } from "../adapters/dispatch.js";
 import type { RunReports } from "../artifacts/fetch.js";
 import { buildEvent, type RunContext, type TestEvent } from "../events/event.js";
 import type { WorkflowRun } from "../github/runs.js";
+import { type MatrixPattern, matrixForArtifact } from "./matrix.js";
 
 /** Extensions worth reading as report candidates: JUnit XML, Playwright JSONL, mochawesome JSON. */
 const CANDIDATE_EXTENSIONS = new Set([".xml", ".jsonl", ".json"]);
@@ -28,6 +29,11 @@ export interface ParseOptions {
   fullErrors?: boolean;
   /** Timestamp stamped as `collected_at`; injectable for tests. */
   now?: Date;
+  /**
+   * Compiled `matrixFromArtifact` pattern. Names the matrix dimensions read out of each
+   * artifact's name; without it the cell is the opaque `{ artifact: <name> }`.
+   */
+  matrixPattern?: MatrixPattern;
 }
 
 function emptySummary(): ParseSummary {
@@ -58,7 +64,7 @@ export async function parseRunReports(
 
   for (const report of reports) {
     const run = runContext(repoSlug, report.run);
-    for (const file of report.files) {
+    for (const { path: file, artifact } of report.files) {
       if (!CANDIDATE_EXTENSIONS.has(extname(file).toLowerCase())) {
         continue;
       }
@@ -86,7 +92,7 @@ export async function parseRunReports(
           buildEvent(test, {
             framework: detected.framework,
             run,
-            matrix: {},
+            matrix: matrixForArtifact(artifact, options.matrixPattern),
             collected_at: collectedAt,
           }),
         );

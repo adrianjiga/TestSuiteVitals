@@ -63,6 +63,8 @@ suitevitals collect --config repos.json                 # repos from a config fi
 | `--workflow <glob>` | Only collect runs of workflows matching this glob (`*` wildcard; default all). |
 | `--exclude-trigger <list>` | Skip runs fired by these events (comma-separated, e.g. `pull_request`). |
 | `--max-runs <n>` | Process at most this many completed runs per repo; the rest resume next run. |
+| `--exclude-artifact <list>` | Skip artifacts whose name matches these globs (comma-separated). Dropped before download. |
+| `--matrix-from-artifact <regex>` | Regex with named groups read from each artifact name; the group names become the matrix dimensions. |
 | `--max-artifact-mb <n>` | Size cap when sniffing unnamed artifacts for reports (default 100). |
 | `--full-errors` | Store full error messages without redaction or truncation. |
 | `--dry-run` | Show what would be fetched without writing any data. |
@@ -83,6 +85,54 @@ redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, Ope
 `user:pass@` URL credentials, JWTs, PEM private-key blocks, and query-string values — and
 truncated to a budget that holds even for single-line dumps; `--full-errors` bypasses both.
 
+### Matrix cells from artifact names
+
+Playwright blob reports carry their own matrix (the project name). **JUnit and mochawesome carry
+none** — but a CI matrix job uploads its results under its own artifact name, so the name *is* the
+cell.
+
+This is not cosmetic. The dedup key is `(run_id, run_attempt, id, matrix)`, so with no matrix every
+cell's result for one test shares a key: the first written wins and the rest are dropped as
+duplicates. **A test that fails only on Firefox is undetectable** — the Chrome pass and the Firefox
+failure collapse into one arbitrary survivor.
+
+`--matrix-from-artifact` names the dimensions with a regex; the **named groups become the matrix**:
+
+```bash
+suitevitals collect --repo owner/web \
+  --matrix-from-artifact 'results-(?<group>[^-]+)-(?<browser>[^-]+)-(?<viewport>[^-]+)'
+```
+
+```
+results-webtables-firefox-desktop  →  { group: "webtables", browser: "firefox", viewport: "desktop" }
+```
+
+The pattern must declare at least one named group — group names are the dimensions, so a pattern
+without them cannot produce a cell and is rejected at config-parse time, before any network work.
+Optional groups that do not participate in a match are omitted rather than stored as empty, so
+`results-ui-mobile` and `results-ui-chrome-mobile` do not land in different cells over an absent key.
+
+Without a pattern the cell is the opaque `{ artifact: <name> }`. Verbose, but it is a fact rather
+than an inference, and it keeps distinct cells distinct. An artifact that does not match a
+configured pattern falls back to the same opaque form rather than being dropped — a report is
+evidence, and discarding it because a pattern was mistyped is the exact failure this prevents.
+
+**Exclude roll-up artifacts.** A pipeline that uploads per-cell reports *and* a merged report of the
+same results would count every test twice — once under its real cell, once under the roll-up. Drop
+the roll-up by name:
+
+```bash
+suitevitals collect --repo owner/web --exclude-artifact 'final-test-report'
+```
+
+Exclusion happens before download, so the roll-up costs no bandwidth either, and the count is
+surfaced in the collect summary rather than being silent.
+
+> **Migration:** adding a matrix changes the dedup key, so events collected before and after will
+> not de-duplicate against each other over an overlapping window. Test **identity** (`id`) is
+> untouched (D5), so history stays attached to the same test — only per-run duplicate detection is
+> affected. Re-collect a repo from scratch if an overlapping window matters.
+
 ### Config file
 
 A `--config` file collects several repos in one invocation. Each repo is a bare `owner/name`
@@ -96,14 +146,22 @@ applied to every repo:
   "excludeTriggers": ["pull_request"],
   "repos": [
     "owner/web-app",
-    { "repo": "owner/api", "hoursBack": 168, "concurrency": 2, "workflow": "e2e-*" }
+    { "repo": "owner/api", "hoursBack": 168, "concurrency": 2, "workflow": "e2e-*" },
+    {
+      "repo": "owner/web",
+      "excludeArtifacts": ["final-test-report"],
+      "matrixFromArtifact": "results-(?<group>[^-]+)-(?<browser>[^-]+)-(?<viewport>[^-]+)"
+    }
   ]
 }
 ```
 
+A working example against three real repos ships as
+[`repos.example.json`](repos.example.json) — copy it and swap the repo names.
+
 Settings resolve most-specific-wins: a per-repo value beats the matching CLI flag
-(`--hours-back`/`--concurrency`/`--workflow`/`--exclude-trigger`), which beats the config-level
-default, which beats the built-in. A repo named on both the CLI and in the config is collected
+(`--hours-back`/`--concurrency`/`--workflow`/`--exclude-trigger`/`--exclude-artifact`/
+`--matrix-from-artifact`), which beats the config-level default, which beats the built-in. A repo named on both the CLI and in the config is collected
 once. Repos share one state file and data directory; state is keyed per repo, so each has its
 own independent watermark. Filtered-out runs are policy skips: the watermark may pass them, so
 excluding a noisy workflow never stalls collection. `--exclude-trigger pull_request` is also

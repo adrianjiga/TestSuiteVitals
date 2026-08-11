@@ -126,7 +126,21 @@ and fingerprinted from their normalized stack
 `ParsedTest` shape that a common builder enriches into a `TestEvent` with stable identity
 (`id = hash(file + title_path)`, [D5](decisions.md#d5--test-identity-hashfile--title_path)). An
 adapter may set a per-test `matrix` (Playwright's project); adapters without matrix info (JUnit,
-mochawesome) fall back to the collect-level default.
+mochawesome) fall back to the collect-level default, which is **derived from the name of the
+artifact the report came from** (`src/collect/matrix.ts`).
+
+That fallback is load-bearing rather than cosmetic. The dedup key below includes `matrix`, so a
+permanently empty one makes every matrix cell's result for a test share a key — the first written
+wins and the rest are discarded as duplicates. A test failing only on Firefox is then undetectable.
+Because a CI matrix job uploads its own artifact, the artifact name identifies the cell:
+`--matrix-from-artifact` supplies a regex whose **named groups become the dimensions**, and without
+one the cell is the opaque `{ artifact: <name> }` — a fact rather than an inference, and enough to
+keep distinct cells distinct. Extraction therefore tags every file with its source artifact
+(`ExtractedFile`), which the fetch layer previously discarded.
+
+The counterpart is `--exclude-artifact`: a pipeline uploading both per-cell reports and a merged
+roll-up of the same results would count every test twice, so the roll-up is dropped by name glob in
+`partitionArtifacts` — before download, and counted in the summary rather than silently.
 
 Events are then appended to monthly NDJSON partitions
 (`data/<owner>__<repo>/<YYYY-MM>.ndjson`, [D1](decisions.md#d1--source-of-truth-partitioned-ndjson)),
