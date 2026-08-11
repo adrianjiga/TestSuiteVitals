@@ -43,4 +43,36 @@ describe("partitionArtifacts", () => {
     expect(result.reports).toHaveLength(0);
     expect(result.expired).toHaveLength(1);
   });
+
+  it("excludes by glob before any other tier, so a roll-up is never downloaded", () => {
+    // A pipeline that uploads per-cell reports *and* a merged roll-up would otherwise count
+    // every test twice — once under its real cell, once under the roll-up.
+    const result = partitionArtifacts(
+      [
+        artifact({ id: 1, name: "cypress-results-ui-chrome-desktop" }),
+        artifact({ id: 2, name: "final-test-report" }),
+      ],
+      ["final-test-report"],
+    );
+
+    expect(result.reports.map((a) => a.id)).toEqual([1]);
+    expect(result.excluded.map((a) => a.id)).toEqual([2]);
+    expect(result.skipped).toHaveLength(0);
+  });
+
+  it("excludes an artifact even when it is expired or a report match", () => {
+    // Exclusion is the caller's explicit intent, so it wins over every other classification.
+    const result = partitionArtifacts(
+      [artifact({ id: 1, name: "junit-results", expired: true })],
+      ["junit-*"],
+    );
+    expect(result.excluded.map((a) => a.id)).toEqual([1]);
+    expect(result.expired).toHaveLength(0);
+  });
+
+  it("leaves everything alone when no globs are given", () => {
+    const result = partitionArtifacts([artifact({ name: "blob-report" })]);
+    expect(result.excluded).toHaveLength(0);
+    expect(result.reports).toHaveLength(1);
+  });
 });

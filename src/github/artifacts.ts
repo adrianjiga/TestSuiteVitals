@@ -1,4 +1,5 @@
 import type { Octokit } from "@octokit/rest";
+import { matchesGlob } from "../collect/filter.js";
 import type { RepoRef } from "./repo.js";
 
 /** A run artifact reduced to the fields tiered discovery (D9) needs. */
@@ -31,19 +32,33 @@ export interface PartitionedArtifacts {
   expired: ArtifactMeta[];
   /** Live non-report artifacts — tier-3 sniff candidates when a run has no name match (D9). */
   skipped: ArtifactMeta[];
+  /** Artifacts the caller excluded by name — counted, never downloaded. */
+  excluded: ArtifactMeta[];
 }
 
 /**
  * Partitions a run's artifacts. Expired is checked first: an expired report match
  * still cannot be downloaded, so it belongs in the expired (reported) bucket.
+ *
+ * `excludeGlobs` drops artifacts by name before any tier considers them. The motivating case
+ * is a pipeline that uploads both per-matrix-cell reports *and* a merged roll-up of the same
+ * results: collecting both counts every test twice, once under its real cell and once under
+ * the roll-up, inflating the run counts the flake score divides by. Excluding is done here,
+ * pre-download, so the roll-up costs no bandwidth either.
  */
-export function partitionArtifacts(artifacts: ArtifactMeta[]): PartitionedArtifacts {
+export function partitionArtifacts(
+  artifacts: ArtifactMeta[],
+  excludeGlobs: string[] = [],
+): PartitionedArtifacts {
   const reports: ArtifactMeta[] = [];
   const expired: ArtifactMeta[] = [];
   const skipped: ArtifactMeta[] = [];
+  const excluded: ArtifactMeta[] = [];
 
   for (const artifact of artifacts) {
-    if (artifact.expired) {
+    if (excludeGlobs.some((glob) => matchesGlob(glob, artifact.name))) {
+      excluded.push(artifact);
+    } else if (artifact.expired) {
       expired.push(artifact);
     } else if (matchesReportArtifact(artifact.name)) {
       reports.push(artifact);
@@ -52,7 +67,7 @@ export function partitionArtifacts(artifacts: ArtifactMeta[]): PartitionedArtifa
     }
   }
 
-  return { reports, expired, skipped };
+  return { reports, expired, skipped, excluded };
 }
 
 type ListedArtifact = Awaited<
