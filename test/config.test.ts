@@ -82,6 +82,38 @@ describe("resolveTargets", () => {
     expect(target?.hoursBack).toBeUndefined();
   });
 
+  it("resolves matrixFromArtifact most-specific-wins", () => {
+    const targets = resolveTargets({
+      ...base,
+      cliMatrixFromArtifact: "cli-(?<browser>.+)",
+      config: {
+        matrixFromArtifact: "default-(?<browser>.+)",
+        repos: [
+          { repo: "owner/override", matrixFromArtifact: "own-(?<browser>.+)" },
+          "owner/inherits",
+        ],
+      },
+    });
+
+    expect(targets.find((t) => t.slug === "owner/override")?.matrixFromArtifact).toBe(
+      "own-(?<browser>.+)",
+    );
+    expect(targets.find((t) => t.slug === "owner/inherits")?.matrixFromArtifact).toBe(
+      "cli-(?<browser>.+)",
+    );
+  });
+
+  it("rejects a bad matrixFromArtifact at parse time, naming the key", () => {
+    // Compiling at config-parse time means a bad regex fails before any network work, with
+    // the offending key named — not mid-collect on the first artifact.
+    expect(() => parseConfig('{"repos":[],"matrixFromArtifact":"no-groups-(.+)"}')).toThrow(
+      /named group/,
+    );
+    expect(() =>
+      parseConfig('{"repos":[{"repo":"o/r","matrixFromArtifact":"(?<b>[a-z"}]}'),
+    ).toThrow(/repos\[0\] matrixFromArtifact/);
+  });
+
   it("resolves workflow and excludeTriggers most-specific-wins", () => {
     const targets = resolveTargets({
       ...base,

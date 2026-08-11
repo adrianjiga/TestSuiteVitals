@@ -11,6 +11,7 @@ import {
 } from "../artifacts/fetch.js";
 import { type CollectTarget, loadConfig, resolveTargets } from "../collect/config.js";
 import { capRuns, filterRuns, watermarkDisposal } from "../collect/filter.js";
+import { compileMatrixPattern } from "../collect/matrix.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
 import { nextWatermark } from "../collect/watermark.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
@@ -117,6 +118,16 @@ export const collectCommand = defineCommand({
       type: "string",
       description: "Skip runs fired by these trigger events (comma-separated, e.g. pull_request)",
     },
+    "exclude-artifact": {
+      type: "string",
+      description:
+        "Skip artifacts whose name matches these globs (comma-separated, e.g. final-test-report)",
+    },
+    "matrix-from-artifact": {
+      type: "string",
+      description:
+        "Regex with named groups read from each artifact name; groups become matrix dimensions",
+    },
     "max-artifact-mb": {
       type: "string",
       description: `Size cap for sniffing unnamed report artifacts (default ${DEFAULT_MAX_ARTIFACT_MB})`,
@@ -139,7 +150,9 @@ export const collectCommand = defineCommand({
       cliHoursBack: hoursBack,
       cliConcurrency: concurrency,
       cliWorkflow: args.workflow,
-      cliExcludeTriggers: parseExcludeTriggers(args["exclude-trigger"]),
+      cliExcludeTriggers: parseCommaList(args["exclude-trigger"]),
+      cliMatrixFromArtifact: args["matrix-from-artifact"],
+      cliExcludeArtifacts: parseCommaList(args["exclude-artifact"]),
       config,
       defaultConcurrency: DEFAULT_CONCURRENCY,
     });
@@ -301,6 +314,7 @@ async function collectRepo(
         dryRun: shared.dryRun,
         onProgress: (done, total) => reportProgress(done, total, p),
         concurrency: target.concurrency,
+        excludeArtifacts: target.excludeArtifacts,
         ...(shared.maxArtifactMb !== undefined ? { maxArtifactMb: shared.maxArtifactMb } : {}),
       },
     );
@@ -313,6 +327,9 @@ async function collectRepo(
     const parsed = await parseRunReports(reports, slug, {
       fullErrors: shared.fullErrors,
       now: shared.now,
+      matrixPattern: target.matrixFromArtifact
+        ? compileMatrixPattern(target.matrixFromArtifact)
+        : undefined,
     });
     printParseSummary(parsed.summary, p);
 
@@ -406,6 +423,13 @@ function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean, p:
     const verb2 = dryRun ? "would sniff" : "sniffed";
     console.log(
       p.dim(`    ${verb2} ${summary.sniffedArtifacts} unnamed artifact(s) for reports (tier 3).`),
+    );
+  }
+  if (summary.excludedArtifacts > 0) {
+    console.log(
+      p.dim(
+        `    ${summary.excludedArtifacts} artifact(s) skipped by --exclude-artifact (not downloaded).`,
+      ),
     );
   }
   if (summary.expiredArtifacts > 0) {
@@ -532,8 +556,8 @@ function parsePositiveIntFlag(value: string | undefined, flag: string): number |
   return n;
 }
 
-/** Splits a comma-separated `--exclude-trigger` list; returns undefined when not provided. */
-function parseExcludeTriggers(value: string | undefined): string[] | undefined {
+/** Splits a comma-separated flag list (`--exclude-trigger`, `--exclude-artifact`). */
+function parseCommaList(value: string | undefined): string[] | undefined {
   if (value === undefined) {
     return undefined;
   }

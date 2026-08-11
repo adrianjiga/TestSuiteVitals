@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { parseRepoRef, type RepoRef, repoSlug } from "../github/repo.js";
+import { compileMatrixPattern } from "./matrix.js";
 
 /** A repo entry in a config file: a bare `owner/name`, or an object with per-repo overrides. */
 export interface RepoConfigEntry {
@@ -8,6 +9,10 @@ export interface RepoConfigEntry {
   concurrency?: number;
   workflow?: string;
   excludeTriggers?: string[];
+  /** Regex with named groups; group names become matrix dimensions read from artifact names. */
+  matrixFromArtifact?: string;
+  /** Artifact-name globs to skip entirely (e.g. a merged roll-up that repeats per-cell results). */
+  excludeArtifacts?: string[];
 }
 
 /** A parsed `--config` file: a repo list plus optional defaults applied to every repo. */
@@ -16,6 +21,10 @@ export interface RepoConfig {
   concurrency?: number;
   workflow?: string;
   excludeTriggers?: string[];
+  /** Default matrix pattern applied to every repo that does not override it. */
+  matrixFromArtifact?: string;
+  /** Default artifact-name globs to skip, applied to every repo that does not override them. */
+  excludeArtifacts?: string[];
   repos: (string | RepoConfigEntry)[];
 }
 
@@ -29,6 +38,10 @@ export interface CollectTarget {
   workflow?: string;
   /** Skip runs fired by these trigger events. */
   excludeTriggers?: string[];
+  /** Regex whose named groups name the matrix dimensions read out of each artifact name. */
+  matrixFromArtifact?: string;
+  /** Artifact-name globs dropped before download. */
+  excludeArtifacts?: string[];
 }
 
 export interface ResolveTargetsInput {
@@ -42,6 +55,10 @@ export interface ResolveTargetsInput {
   cliWorkflow?: string;
   /** `--exclude-trigger` from the CLI, if any. */
   cliExcludeTriggers?: string[];
+  /** `--matrix-from-artifact` from the CLI, if any. */
+  cliMatrixFromArtifact?: string;
+  /** `--exclude-artifact` from the CLI, if any. */
+  cliExcludeArtifacts?: string[];
   /** Parsed `--config` file, if one was given. */
   config?: RepoConfig;
   /** Built-in concurrency default when nothing else sets it. */
@@ -80,6 +97,8 @@ export function parseConfig(raw: string, source = "config"): RepoConfig {
     concurrency: optionalConcurrency(data.concurrency, `${source} concurrency`),
     workflow: optionalString(data.workflow, `${source} workflow`),
     excludeTriggers: optionalStringArray(data.excludeTriggers, `${source} excludeTriggers`),
+    matrixFromArtifact: optionalPattern(data.matrixFromArtifact, `${source} matrixFromArtifact`),
+    excludeArtifacts: optionalStringArray(data.excludeArtifacts, `${source} excludeArtifacts`),
     repos: repos.map((entry, i) => parseEntry(entry, `${source} repos[${i}]`)),
   };
 }
@@ -97,6 +116,8 @@ function parseEntry(entry: unknown, where: string): string | RepoConfigEntry {
     concurrency: optionalConcurrency(entry.concurrency, `${where} concurrency`),
     workflow: optionalString(entry.workflow, `${where} workflow`),
     excludeTriggers: optionalStringArray(entry.excludeTriggers, `${where} excludeTriggers`),
+    matrixFromArtifact: optionalPattern(entry.matrixFromArtifact, `${where} matrixFromArtifact`),
+    excludeArtifacts: optionalStringArray(entry.excludeArtifacts, `${where} excludeArtifacts`),
   };
 }
 
@@ -114,6 +135,8 @@ export function resolveTargets(input: ResolveTargetsInput): CollectTarget[] {
     cliConcurrency,
     cliWorkflow,
     cliExcludeTriggers,
+    cliMatrixFromArtifact,
+    cliExcludeArtifacts,
     config,
     defaultConcurrency,
   } = input;
@@ -135,6 +158,9 @@ export function resolveTargets(input: ResolveTargetsInput): CollectTarget[] {
         perRepo.concurrency ?? cliConcurrency ?? config?.concurrency ?? defaultConcurrency,
       workflow: perRepo.workflow ?? cliWorkflow ?? config?.workflow,
       excludeTriggers: perRepo.excludeTriggers ?? cliExcludeTriggers ?? config?.excludeTriggers,
+      matrixFromArtifact:
+        perRepo.matrixFromArtifact ?? cliMatrixFromArtifact ?? config?.matrixFromArtifact,
+      excludeArtifacts: perRepo.excludeArtifacts ?? cliExcludeArtifacts ?? config?.excludeArtifacts,
     });
   };
 
@@ -188,6 +214,20 @@ function optionalString(value: unknown, where: string): string | undefined {
     throw new Error(`Invalid ${where}: expected a non-empty string.`);
   }
   return value;
+}
+
+/**
+ * Validates a matrix pattern at config-parse time by compiling it, so a bad regex fails
+ * immediately with the offending key named — rather than at the first artifact, mid-collect,
+ * after the network work is already done.
+ */
+function optionalPattern(value: unknown, where: string): string | undefined {
+  const pattern = optionalString(value, where);
+  if (pattern === undefined) {
+    return undefined;
+  }
+  compileMatrixPattern(pattern, where);
+  return pattern;
 }
 
 function optionalStringArray(value: unknown, where: string): string[] | undefined {
