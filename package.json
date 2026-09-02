@@ -51,9 +51,9 @@
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.10",
-    "@types/node": "^26.2.0",
-    "tsx": "^4.23.12",
+    "@biomejs/biome": "2.5.11",
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.13",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
   }
