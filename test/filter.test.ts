@@ -25,6 +25,11 @@ describe("matchesGlob", () => {
     expect(matchesGlob("CI", "CI deploy")).toBe(false);
   });
 
+  it("ignores spaces around the pattern, as from a padded shell variable", () => {
+    expect(matchesGlob(" e2e-* ", "e2e-chromium")).toBe(true);
+    expect(matchesGlob("Playwright Tests ", "Playwright Tests")).toBe(true);
+  });
+
   it("treats regex metacharacters as literals", () => {
     expect(matchesGlob("ci.yml", "ci.yml")).toBe(true);
     expect(matchesGlob("ci.yml", "ciXyml")).toBe(false);
