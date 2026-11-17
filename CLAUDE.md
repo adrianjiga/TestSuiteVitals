@@ -23,10 +23,9 @@ hand-format.
 
 ## Environment
 
-- **Node floor is 24** (`engines`), but local dev commonly runs on Node 22 (**22.15 or newer**, for
-  the built-in `node:zlib` zstd that `compact` and `.zst` reads use). `npm install` prints an
-  EBADENGINE warning — that is expected. Everything dev-facing goes through `tsx`/`vitest`, which run
-  on 22, so **do not use Node-24-only runtime APIs**, or you break local dev.
+- **Node 24 everywhere** — `engines`, CI and local dev — so Node 24 runtime APIs are fine. The
+  maintainer's nvm *default* alias is still 22.19, so a non-interactive shell can resolve Node 22;
+  put Node 24 first on `PATH` (e.g. `nvm use 24`) before running the gates.
 - ESM throughout (`"type": "module"`). Relative imports **must** use `.js` specifiers even from `.ts`
   files (NodeNext resolution) — e.g. `import { resolveToken } from "./auth.js"`.
 
@@ -110,7 +109,7 @@ per-test time-ordered outcome list, so the `Aggregator` takes an opt-in `timelin
 The `compact` command (`src/commands/compact.ts` → `src/store/compact.ts`) zstd-compresses closed
 months (D2): each `<YYYY-MM>.ndjson` becomes `<YYYY-MM>.ndjson.zst`, the current month stays
 uncompressed for cheap appends. The compression chokepoint is `src/store/compress.ts`
-(built-in `node:zlib` zstd, available from Node 22.15 — no native dependency, so installs never
+(built-in `node:zlib` zstd — no native dependency, so installs never
 need an install script or a compiler, and it reads files written by the old `@mongodb-js/zstd`). The
 reader (`read.ts`) and append-dedup (`ndjson.ts`) read either form transparently. Crash safety:
 compact writes and fsyncs the new `.zst` as a temp file, atomically renames it (fsyncing the
