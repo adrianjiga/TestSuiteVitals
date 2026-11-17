@@ -190,7 +190,7 @@ drawing every nested archive from one decompression budget per artifact. Pure lo
 state, glob matching, partitioning, prune cutoff, extract, fetch orchestration, redaction,
 fingerprint, JUnit parse, event build, dedup, watermark, NDJSON append, manifest-path
 selection) is unit-tested; only the raw Octokit calls (`listRunsSince`, `getRun`,
-`listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`) are left to integration. Artifact fetching runs up to
+`listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`, `listAttemptStarts`, `listRecentCompletedRuns`) are left to integration. Artifact fetching runs up to
 `--concurrency` runs in parallel (`p-limit` pool, default 5): each run is processed into an
 isolated outcome, then outcomes are folded in input order so the summary and event order stay
 deterministic. Rate-limit/transient backoff lives at the transport (`client.ts`) via GitHub's

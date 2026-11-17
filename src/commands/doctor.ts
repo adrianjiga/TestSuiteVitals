@@ -13,7 +13,7 @@ import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
 import { getRepoFile, listRepoTree, repoHasFile } from "../github/contents.js";
 import { parseRepoRef, type RepoRef, repoSlug } from "../github/repo.js";
-import { classifyRuns, listRunsSince } from "../github/runs.js";
+import { listRecentCompletedRuns } from "../github/runs.js";
 
 /** How many recent completed runs to inspect for uploaded artifacts. */
 const RUNS_TO_INSPECT = 10;
@@ -56,12 +56,11 @@ export const doctorCommand = defineCommand({
 /** Reads the recent runs' artifact names and the repo's manifests into {@link RepoSignals}. */
 async function gatherSignals(client: GitHubClient, ref: RepoRef): Promise<RepoSignals> {
   const { octokit } = client;
-  const now = new Date();
-  const since = new Date(now.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const { completed } = classifyRuns(await listRunsSince(octokit, ref, since, now));
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const completed = await listRecentCompletedRuns(octokit, ref, since, RUNS_TO_INSPECT);
 
   const artifactNames = new Set<string>();
-  for (const run of completed.slice(0, RUNS_TO_INSPECT)) {
+  for (const run of completed) {
     for (const artifact of await listRunArtifacts(octokit, ref, run.run_id)) {
       artifactNames.add(artifact.name);
     }

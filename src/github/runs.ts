@@ -123,6 +123,23 @@ async function listRunRange(
   return { complete: true, runs };
 }
 
+/** The newest `count` completed runs created at or after `since`, in one request. */
+export async function listRecentCompletedRuns(
+  octokit: Octokit,
+  ref: RepoRef,
+  since: Date,
+  count: number,
+): Promise<WorkflowRun[]> {
+  const { data } = await octokit.rest.actions.listWorkflowRunsForRepo({
+    owner: ref.owner,
+    repo: ref.repo,
+    created: `>=${since.toISOString()}`,
+    status: "completed",
+    per_page: count,
+  });
+  return data.workflow_runs.map(normalize);
+}
+
 /** Fetches a single workflow run by id — the D12 pending-run re-check path. */
 export async function getRun(octokit: Octokit, ref: RepoRef, runId: number): Promise<WorkflowRun> {
   const { data } = await octokit.rest.actions.getWorkflowRun({
