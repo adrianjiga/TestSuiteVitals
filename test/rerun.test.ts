@@ -86,19 +86,45 @@ describe("nextCollectedAttempts", () => {
 });
 
 describe("initialCollectedAttempts", () => {
-  const older = [run(1, "2026-06-20T00:00:00Z", 2), run(2, "2026-06-20T00:00:00Z")];
+  const older = [
+    { ...run(1, "2026-06-20T00:00:00Z", 2), run_started_at: "2026-06-21T00:00:00Z" },
+    run(2, "2026-06-20T00:00:00Z"),
+  ];
   const inWindow = run(3, "2026-06-23T01:00:00Z", 2);
+  const LAST = "2026-06-22T00:00:00Z";
 
   it("uses the recorded attempts once a repo tracks re-runs", () => {
-    const previous = { pending_runs: [], watermark: "2026-06-23T00:00:00Z", rerun_attempts: {} };
+    const previous = {
+      pending_runs: [],
+      watermark: "2026-06-23T00:00:00Z",
+      last_collected_at: LAST,
+      rerun_attempts: {},
+    };
     expect(initialCollectedAttempts(previous, [...older, inWindow], WINDOW)).toEqual({});
   });
 
   it("takes an upgraded repo's older re-runs as already collected", () => {
-    const previous = { pending_runs: [], watermark: "2026-06-23T00:00:00Z" };
+    const previous = {
+      pending_runs: [],
+      watermark: "2026-06-23T00:00:00Z",
+      last_collected_at: LAST,
+    };
     const seeded = initialCollectedAttempts(previous, [...older, inWindow], WINDOW);
     expect(seeded).toEqual({ "1": 2 });
     expect(selectRuns([...older, inWindow], WINDOW, seeded).reruns).toBe(0);
+  });
+
+  it("leaves a re-run that started after the last collect to be collected", () => {
+    const previous = {
+      pending_runs: [],
+      watermark: "2026-06-23T00:00:00Z",
+      last_collected_at: LAST,
+    };
+    const later = { ...run(4, "2026-06-20T00:00:00Z", 2), run_started_at: "2026-06-22T06:00:00Z" };
+    const unknown = run(5, "2026-06-20T00:00:00Z", 2);
+    const seeded = initialCollectedAttempts(previous, [later, unknown], WINDOW);
+    expect(seeded).toEqual({});
+    expect(selectRuns([later, unknown], WINDOW, seeded).reruns).toBe(2);
   });
 
   it("seeds nothing for a repo that was never collected", () => {

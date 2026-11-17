@@ -22,8 +22,9 @@ export function listingStart(
 }
 
 /**
- * The re-run attempts already collected. For a repo with a watermark but no record yet, listed
- * runs before the window count as collected at their current attempt.
+ * The re-run attempts already collected. For a repo with a watermark but no record yet, a listed
+ * run before the window counts as collected at its current attempt only if that attempt started
+ * before the repo's last collect.
  */
 export function initialCollectedAttempts(
   previous: RepoState,
@@ -34,12 +35,14 @@ export function initialCollectedAttempts(
     return previous.rerun_attempts;
   }
   const seeded: Record<string, number> = {};
-  if (!previous.watermark) {
+  const lastCollected = previous.last_collected_at;
+  if (!previous.watermark || !lastCollected) {
     return seeded;
   }
   const sinceIso = windowSince.toISOString();
   for (const run of listed) {
-    if (run.created_at < sinceIso && run.run_attempt > 1) {
+    const startedBefore = run.run_started_at !== undefined && run.run_started_at <= lastCollected;
+    if (run.created_at < sinceIso && run.run_attempt > 1 && startedBefore) {
       seeded[String(run.run_id)] = run.run_attempt;
     }
   }

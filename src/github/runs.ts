@@ -14,6 +14,8 @@ export interface WorkflowRun {
   sha: string;
   trigger: string;
   created_at: string;
+  /** When the latest attempt started. */
+  run_started_at?: string;
 }
 
 /** Runs split by whether they are safe to collect now (D12). */
@@ -43,6 +45,7 @@ function normalize(run: ListedRun | FetchedRun): WorkflowRun {
     sha: run.head_sha,
     trigger: run.event,
     created_at: run.created_at,
+    ...(run.run_started_at ? { run_started_at: run.run_started_at } : {}),
   };
 }
 
