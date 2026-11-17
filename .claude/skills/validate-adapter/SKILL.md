@@ -1,6 +1,6 @@
 ---
 name: validate-adapter
-description: Validate a report-format adapter end-to-end against a live GitHub repo — run collect, confirm parsed counts, prove D12 idempotency on re-run, check month-partitioning, then clean up scratch data. Use after building or changing an adapter and you want real-data confidence, not just unit tests.
+description: Validate a report-format adapter end-to-end against a live GitHub repo — run collect, confirm parsed counts, prove idempotency (decision 0012) on re-run, check month-partitioning, then clean up scratch data. Use after building or changing an adapter and you want real-data confidence, not just unit tests.
 ---
 
 # Validate an adapter against real CI artifacts
@@ -29,11 +29,11 @@ WORK=<scratchpad>/sv-validate
    - To read a single extracted report, use a tiny node script, **not** `head`/`cat` over
      globs — `head -1 *.json` injects `==>` banners that break `JSON.parse`.
 
-3. **Prove idempotency (D12).** Re-run the *exact same command*. It MUST write **0** new
+3. **Prove idempotency (decision 0012).** Re-run the *exact same command*. It MUST write **0** new
    events — the `(run_id, run_attempt, id, matrix)` dedup absorbs the overlap. A non-zero
    second run is a bug, report it.
 
-4. **Check partitioning (D1).** Events land in `data/<owner>__<repo>/<YYYY-MM>.ndjson`,
+4. **Check partitioning (decision 0001).** Events land in `data/<owner>__<repo>/<YYYY-MM>.ndjson`,
    partitioned by each run's month. Confirm a backfill spanning a month boundary split
    correctly, and that `framework` and `matrix` on the records match expectations (flat
    formats → `matrix` is `{}`).

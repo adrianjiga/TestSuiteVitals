@@ -18,7 +18,7 @@ in an adapter. The exact shapes live in `src/events/event.ts`:
 - `TestAttempt`: `{ n, status, duration_ms, error? }`
 - `TestStatus`: `"passed" | "failed" | "skipped"`
 - Errors: build via `makeTestError({ message, stack }, options)` from `src/events/error.js`
-  — it redacts + truncates by default and computes the stack `fingerprint` (D6/D7). Never
+  — it redacts + truncates by default and computes the stack `fingerprint` (decisions 0006/0007). Never
   construct a `TestError` by hand and never include a raw stack/message.
 
 Study the three existing adapters before writing — match their structure exactly:
@@ -30,10 +30,10 @@ Study the three existing adapters before writing — match their structure exact
 
 ## Locked rules that constrain your output (do not violate)
 
-- **Identity is `hash(file + title_path)` only (D5).** The matrix is always a dimension,
+- **Identity is `hash(file + title_path)` only (decision 0005).** The matrix is always a dimension,
   never identity. If the format encodes a browser/viewport/shard, set a per-test `matrix`
   on the `ParsedTest`; otherwise leave it unset and the collect default fills in.
-- **`flaky` (D5):** true only when the final attempt passed but an earlier one failed. For
+- **`flaky` (decision 0005):** true only when the final attempt passed but an earlier one failed. For
   flat formats (one attempt) it is always `false`.
 - **ESM/NodeNext:** every relative import uses a `.js` specifier even from `.ts`
   (`import { makeTestError } from "../events/error.js"`).
@@ -56,8 +56,9 @@ Study the three existing adapters before writing — match their structure exact
    then cover (a) sniff recognizes its own + rejects others, (b) suite/title-path nesting,
    (c) every status mapping path, (d) a failed test gets a redacted + fingerprinted error
    (`expect(...).toMatch(/^[0-9a-f]{12}$/)`), (e) the flaky/attempts shape.
-5. **Docs** — add the adapter to the bullet list in `docs/architecture/collector.md`, the
-   format list in `README.md`, and the adapter rundown in `CLAUDE.md`.
+5. **Docs** — add the adapter to the **Supported** list in `README.md`, the adapter sections
+   of `docs/Technical-Design.md` and `docs/API-Interface-Design.md` (Extensibility Guide),
+   the architecture summary in `AGENTS.md`, and an `Added` line in `CHANGELOG.md`.
 
 ## Verify before you hand back
 

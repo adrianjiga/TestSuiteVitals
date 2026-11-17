@@ -14,7 +14,7 @@ to confirm. Delegates the heavy lifting to the existing `/commit` and `/pr` skil
 1. `npm run check` (Biome lint+format+autofix) — must be clean.
 2. `npm run typecheck` — the type gate CI runs.
 3. `npm test` — full vitest suite.
-4. Docs synced (run the `update-docs` skill) — README, `docs/…`, and `CLAUDE.md` all tracked.
+4. Docs synced (run the `update-docs` skill) — README, CHANGELOG, `docs/…`, and `AGENTS.md`.
 
 If any gate fails, stop and surface it; don't paper over it.
 
