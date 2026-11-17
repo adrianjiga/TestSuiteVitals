@@ -34,5 +34,13 @@
     "formatter": {
       "quoteStyle": "double"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": [".claude/**"],
+      "formatter": {
+        "enabled": false
+      }
+    }
+  ]
 }
