@@ -180,9 +180,11 @@ export const collectCommand = defineCommand({
     let releaseLock: () => Promise<void>;
     try {
       const releaseState = await acquireLock(`${args["state-file"]}.lock`);
-      let releaseData: () => Promise<void>;
+      let releaseData: () => Promise<void> = async () => {};
       try {
-        releaseData = await acquireDataDirLock(args["data-dir"]);
+        if (!args["dry-run"]) {
+          releaseData = await acquireDataDirLock(args["data-dir"]);
+        }
       } catch (error) {
         await releaseState();
         throw error;
