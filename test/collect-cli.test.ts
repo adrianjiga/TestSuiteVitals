@@ -54,3 +54,21 @@ describe("collect flag validation", () => {
     30_000,
   );
 });
+
+describe("report and dashboard flag validation", () => {
+  it.each([["report"], ["dashboard"]])(
+    "%s rejects a blank --workflow",
+    (command) => {
+      const result = spawnSync(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts", command, "--repo", "owner/name", "--workflow", " "],
+        { encoding: "utf8", timeout: 20_000, env: { ...process.env, NO_COLOR: "1" } },
+      );
+      expect(result.status).toBe(1);
+      expect(`${result.stdout}${result.stderr}`).toContain(
+        "Invalid --workflow: expected a non-empty string.",
+      );
+    },
+    30_000,
+  );
+});
