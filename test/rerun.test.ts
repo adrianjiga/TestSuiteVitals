@@ -34,6 +34,10 @@ describe("listingStart", () => {
     expect(listingStart(wide, NOW, 168)).toEqual(wide);
   });
 
+  it("is just the window start before a repo's first collect", () => {
+    expect(listingStart(WINDOW, NOW, 168, false)).toEqual(WINDOW);
+  });
+
   it("is just the window start when the lookback is disabled", () => {
     expect(listingStart(WINDOW, NOW, 0)).toEqual(WINDOW);
   });

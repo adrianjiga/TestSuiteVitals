@@ -285,7 +285,7 @@ async function collectRepo(
   const listed = await listRunsSince(
     octokit,
     ref,
-    listingStart(window.since, shared.now, shared.rerunLookbackHours),
+    listingStart(window.since, shared.now, shared.rerunLookbackHours, Boolean(previous.watermark)),
     shared.now,
   );
   const collectedAttempts = initialCollectedAttempts(previous, listed, window.since);

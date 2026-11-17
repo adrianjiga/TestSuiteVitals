@@ -4,8 +4,19 @@ import type { RepoState } from "../state/state.js";
 /** How far behind the window start runs are re-listed to catch re-runs of older runs. */
 export const DEFAULT_RERUN_LOOKBACK_HOURS = 48;
 
-/** Where run listing starts: the window start, or `lookbackHours` before now if earlier. */
-export function listingStart(windowSince: Date, now: Date, lookbackHours: number): Date {
+/**
+ * Where run listing starts: the window start, or `lookbackHours` before now if earlier. A repo
+ * with no watermark has collected nothing yet, so it lists only its window.
+ */
+export function listingStart(
+  windowSince: Date,
+  now: Date,
+  lookbackHours: number,
+  hasWatermark = true,
+): Date {
+  if (!hasWatermark) {
+    return windowSince;
+  }
   const lookback = new Date(now.getTime() - lookbackHours * 60 * 60 * 1000);
   return lookback < windowSince ? lookback : windowSince;
 }
