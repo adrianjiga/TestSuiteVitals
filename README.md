@@ -279,7 +279,10 @@ hands you copy-pasteable YAML to make it work. This is the zero-to-collecting on
 
 ### Errors
 
-A failing command prints a one-line `Error: …` and exits with status 1. Set
+A failing command prints a one-line `Error: …` and exits with status 1 — including `report` or
+`dashboard` on a repo with no collected events (the message shows the directory it looked in;
+`--data-dir` defaults to `./data`, relative to where you run it). Filters that match nothing are
+not an error: `report --json` prints `[]`. Set
 `SUITEVITALS_DEBUG=1` to print the full stack trace instead, e.g. when reporting a bug.
 
 > **Status (v1 feature-complete, M1–M5):** `collect` ingests **JUnit**, **Playwright blob**, and

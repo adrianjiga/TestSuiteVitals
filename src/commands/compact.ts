@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
@@ -30,7 +31,7 @@ export const compactCommand = defineCommand({
     const slugs = args.repo ? [repoSlug(parseRepoRef(args.repo))] : await listRepoSlugs(dataDir);
 
     if (slugs.length === 0) {
-      console.log(palette.dim("No collected repositories to compact."));
+      console.log(palette.dim(`No collected repositories to compact in ${resolve(dataDir)}.`));
       return;
     }
 
