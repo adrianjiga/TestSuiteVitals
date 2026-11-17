@@ -11,6 +11,13 @@ export interface RedactOptions {
   limit?: number;
 }
 
+/** Key names whose values are secrets, in `key=value`, `key: value`, JSON and CLI-flag forms. */
+const SECRET_KEYS =
+  "password|passwd|passphrase|pwd|secret|client[_-]?secret|token|access[_-]?token|auth[_-]?token|api[_-]?key|access[_-]?key|private[_-]?key|account[_-]?key";
+
+/** A secret value: a quoted string (spaces and all), else everything up to whitespace. */
+const SECRET_VALUE = `("[^"]*"|'[^']*'|\\S+)`;
+
 /** Patterns for secrets that must never be stored (D6). */
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
   // PEM private-key blocks (connection failures love to dump these whole).
@@ -25,14 +32,19 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\bglpat-[A-Za-z0-9_-]{20,}\b/g, "[REDACTED]"],
   [/\bnpm_[A-Za-z0-9]{30,}\b/g, "[REDACTED]"],
   [/\bsk-[A-Za-z0-9_-]{32,}\b/g, "[REDACTED]"],
+  // Stripe live/test keys and Google API keys.
+  [/\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g, "[REDACTED]"],
+  [/\bAIza[0-9A-Za-z_-]{35}\b/g, "[REDACTED]"],
   // Bare JWTs: three base64url segments, the first always starting eyJ ('{"').
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]"],
   // Credentials in a URL authority: scheme://user:pass@host (connection strings).
   [/\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/g, "$1[REDACTED]@"],
   // Bearer/Basic auth headers (covers the Authorization header case).
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/g, "$1 [REDACTED]"],
-  // key=value / key: value secrets.
-  [/\b(password|passwd|pwd|secret|token|api[_-]?key)\b(\s*[=:]\s*)\S+/gi, "$1$2[REDACTED]"],
+  // CLI flags taking the secret as the next argument: `--password hunter2`.
+  [new RegExp(`(--?(?:${SECRET_KEYS}))\\s+${SECRET_VALUE}`, "gi"), "$1 [REDACTED]"],
+  // key=value / key: value / "key": "value" secrets, quoted values kept whole.
+  [new RegExp(`\\b(${SECRET_KEYS})\\b(["']?\\s*[=:]\\s*)${SECRET_VALUE}`, "gi"), "$1$2[REDACTED]"],
   // Query-string values (URLs often carry signed tokens).
   [/([?&][^=\s&]+=)[^\s&]+/g, "$1[REDACTED]"],
 ];

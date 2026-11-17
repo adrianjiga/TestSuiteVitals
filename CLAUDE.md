@@ -166,8 +166,9 @@ keeps compaction or pruning from deleting a partition file mid-append; a stale l
 rename-aside-then-verify, so two racing breakers cannot both win; release deletes the lock only
 while its random token is still ours; and SIGINT/SIGTERM release the
 lock before exiting. Error redaction (D6, `src/events/error.ts`) covers known token shapes
-(GitHub, Slack, AWS, GitLab, npm, OpenAI-style), `user:pass@` URL credentials, bare JWTs, PEM
-private-key blocks, and query-string values; truncation caps the kept first line at the budget.
+(GitHub, Slack, AWS, GitLab, npm, OpenAI-style, Stripe, Google API), `user:pass@` URL credentials,
+bare JWTs, PEM private-key blocks, query-string values, and secret-named keys (`password`,
+`client_secret`, `AccountKey`, …) in `key=value`, JSON (quoted values whole) and `--flag value` forms; truncation caps the kept first line at the budget.
 The JUnit sniff is head-anchored and DOCTYPE-bearing documents parse with entity expansion off
 (no quadratic amplification); matrix cells serialize as JSON inside dedup/grouping keys
 (`stableMatrix` in `src/store/dedup.ts`) so cell content can never collide two cells.

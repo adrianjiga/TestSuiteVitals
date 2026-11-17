@@ -84,8 +84,9 @@ unparseable report file costs that one artifact or file, with a warning, never t
 characters in test titles and artifact names are neutralized before they reach your terminal; in a
 multi-repo invocation a failing repo is reported and the rest still collect; and a corrupt line
 in a partition is skipped with a warning rather than failing the run. Error messages are
-redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, OpenAI-style),
-`user:pass@` URL credentials, JWTs, PEM private-key blocks, and query-string values — and
+redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, OpenAI-style, Stripe,
+Google API), `user:pass@` URL credentials, JWTs, PEM private-key blocks, query-string values, and
+values of secret-named keys and flags (`password: "…"`, `--token …`) — and
 truncated to a budget that holds even for single-line dumps; `--full-errors` bypasses both.
 
 ### Matrix cells from artifact names

@@ -196,7 +196,8 @@ exiting. The JUnit sniff is anchored to the document head (a JSON report merely 
 `<testsuite` is never misrouted), and DOCTYPE-bearing JUnit documents parse with XML entity
 expansion disabled (blocks quadratic entity amplification). The
 [D6](decisions.md#d6--error-storage-redacted--truncated-by-default) truncation budget now caps
-the kept first line too, and redaction also covers GitLab, npm, and OpenAI-style token shapes.
+the kept first line too, and redaction also covers GitLab, npm, OpenAI-style, Stripe and Google API
+token shapes, plus secret-named keys in quoted/JSON and `--flag value` forms.
 Matrix cells serialize as JSON inside dedup/grouping keys, so cell content (`,`, `=`) can never
 make two different cells collide. CI runs with a read-only token and audits production
 dependencies.
