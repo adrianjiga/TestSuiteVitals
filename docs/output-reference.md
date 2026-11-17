@@ -95,7 +95,7 @@ one matrix cell. Lines are compact JSON; shown here pretty-printed.
 | `status`            | string         | `passed`, `failed` or `skipped`: the last attempt's status                                                                                |
 | `flaky`             | boolean        | The last attempt passed after an earlier attempt failed                                                                                   |
 | `duration_ms`       | number         | As reported by the framework                                                                                                              |
-| `attempts[]`        | object[]       | One per execution. JUnit and Mochawesome always have one; Playwright has one per retry                                                    |
+| `attempts[]`        | object[]       | One per execution: one per retry for Playwright and for JUnit with Surefire retries, else one                                             |
 | `attempts[].n`      | number         | 1-based                                                                                                                                   |
 | `attempts[].error`  | object         | Present on failed attempts                                                                                                                |
 | `error.message`     | string         | Redacted and cut to 400 characters (first line only when longer), ending `…[truncated]`. Stored whole with `--full-errors`                |

@@ -23,7 +23,7 @@ report file, before any run or matrix context is attached.
 | `status`      | `TestStatus`             | `"passed"`, `"failed"` or `"skipped"`: the status of the last attempt                                                        |
 | `flaky`       | `boolean`                | `true` only when the last attempt passed and an earlier one failed. Always `false` for one-attempt formats                   |
 | `duration_ms` | `number`                 |                                                                                                                              |
-| `attempts`    | `TestAttempt[]`          | One per execution. JUnit and Mochawesome emit one; Playwright emits one per retry                                            |
+| `attempts`    | `TestAttempt[]`          | One per execution: one per retry for Playwright and Surefire JUnit retries, else one                                         |
 | `matrix`      | `Record<string, string>` | Optional. Set when the format itself names the cell (Playwright: `{ project }`); otherwise the artifact-name default applies |
 
 `deriveStatus(attempts)` and `deriveFlaky(attempts)` compute `status` and
@@ -465,9 +465,9 @@ A format is added as an adapter; the collect pipeline itself does not change.
      per-test `matrix` only if the format itself names the cell. Set `flaky`
      with `deriveFlaky(attempts)`; for one-attempt formats it is `false`.
 
-   Start from `junit.ts` (flat, one attempt per test), `mochawesome.ts`
-   (recursive suite walk) or `playwright-blob.ts` (retries as `attempts[]`,
-   matrix from the project name).
+   Start from `mochawesome.ts` (recursive suite walk, one attempt per test),
+   `junit.ts` (nested suites, Surefire retries as extra attempts) or
+   `playwright-blob.ts` (retries as `attempts[]`, matrix from the project name).
 2. **Register the sniff** in `detectAndParse` in `src/adapters/dispatch.ts`,
    after the existing branches. Make sure no existing format's sample matches
    your sniff, and yours matches none of theirs.
