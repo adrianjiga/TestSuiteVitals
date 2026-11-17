@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { listingStart, nextCollectedAttempts, selectRuns } from "../src/collect/rerun.js";
+import {
+  initialCollectedAttempts,
+  listingStart,
+  nextCollectedAttempts,
+  selectRuns,
+} from "../src/collect/rerun.js";
 import type { WorkflowRun } from "../src/github/runs.js";
 
 function run(id: number, createdAt: string, attempt = 1): WorkflowRun {
@@ -66,5 +71,26 @@ describe("nextCollectedAttempts", () => {
   it("never records first attempts or lowers a recorded attempt", () => {
     const listed = [run(1, "2026-06-20T00:00:00Z"), run(2, "2026-06-21T00:00:00Z", 2)];
     expect(nextCollectedAttempts({ "2": 3 }, listed, listed)).toEqual({ "2": 3 });
+  });
+});
+
+describe("initialCollectedAttempts", () => {
+  const older = [run(1, "2026-06-20T00:00:00Z", 2), run(2, "2026-06-20T00:00:00Z")];
+  const inWindow = run(3, "2026-06-23T01:00:00Z", 2);
+
+  it("uses the recorded attempts once a repo tracks re-runs", () => {
+    const previous = { pending_runs: [], watermark: "2026-06-23T00:00:00Z", rerun_attempts: {} };
+    expect(initialCollectedAttempts(previous, [...older, inWindow], WINDOW)).toEqual({});
+  });
+
+  it("takes an upgraded repo's older re-runs as already collected", () => {
+    const previous = { pending_runs: [], watermark: "2026-06-23T00:00:00Z" };
+    const seeded = initialCollectedAttempts(previous, [...older, inWindow], WINDOW);
+    expect(seeded).toEqual({ "1": 2 });
+    expect(selectRuns([...older, inWindow], WINDOW, seeded).reruns).toBe(0);
+  });
+
+  it("seeds nothing for a repo that was never collected", () => {
+    expect(initialCollectedAttempts({ pending_runs: [] }, older, WINDOW)).toEqual({});
   });
 });

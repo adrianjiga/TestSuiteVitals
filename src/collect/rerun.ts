@@ -1,4 +1,5 @@
 import type { WorkflowRun } from "../github/runs.js";
+import type { RepoState } from "../state/state.js";
 
 /**
  * How far behind the window start runs are re-listed to catch re-runs. A GitHub re-run keeps
@@ -11,6 +12,32 @@ export const DEFAULT_RERUN_LOOKBACK_HOURS = 168;
 export function listingStart(windowSince: Date, now: Date, lookbackHours: number): Date {
   const lookback = new Date(now.getTime() - lookbackHours * 60 * 60 * 1000);
   return lookback < windowSince ? lookback : windowSince;
+}
+
+/**
+ * The re-run attempts already collected. A repo collected before re-runs were tracked has a
+ * watermark but no record, and its stored data already covers every listed run before the window
+ * at its current attempt, so those attempts are taken as collected.
+ */
+export function initialCollectedAttempts(
+  previous: RepoState,
+  listed: WorkflowRun[],
+  windowSince: Date,
+): Record<string, number> {
+  if (previous.rerun_attempts) {
+    return previous.rerun_attempts;
+  }
+  const seeded: Record<string, number> = {};
+  if (!previous.watermark) {
+    return seeded;
+  }
+  const sinceIso = windowSince.toISOString();
+  for (const run of listed) {
+    if (run.created_at < sinceIso && run.run_attempt > 1) {
+      seeded[String(run.run_id)] = run.run_attempt;
+    }
+  }
+  return seeded;
 }
 
 /**

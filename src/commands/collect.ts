@@ -15,6 +15,7 @@ import { compileMatrixPattern } from "../collect/matrix.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
 import {
   DEFAULT_RERUN_LOOKBACK_HOURS,
+  initialCollectedAttempts,
   listingStart,
   nextCollectedAttempts,
   selectRuns,
@@ -297,7 +298,7 @@ async function collectRepo(
     listingStart(window.since, shared.now, shared.rerunLookbackHours),
     shared.now,
   );
-  const collectedAttempts = previous.rerun_attempts ?? {};
+  const collectedAttempts = initialCollectedAttempts(previous, listed, window.since);
   const { runs, reruns } = selectRuns(listed, window.since, collectedAttempts);
   if (reruns > 0) {
     console.log(p.dim(`  Found ${reruns} re-run(s) of older run(s) to collect.`));
