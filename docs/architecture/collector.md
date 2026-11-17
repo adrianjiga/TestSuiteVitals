@@ -48,7 +48,7 @@ silently.
    `config` + `suites` → Playwright; JSON with `stats` + `results` → Mochawesome. A per-repo
    config override wins over sniffing. A candidate file that throws during read or parse is
    warned and skipped, never fatal.
-6. **Normalize & append** events with dedup; the append is fsynced, and state is updated only
+6. **Normalize & append** events with dedup; the append (and its directory) is fsynced, and state is updated only
    after it succeeds. A single-writer lock (`<state-file>.lock`) rejects a concurrent collect
    on the same state file, so the read-keys → append sequence never races itself.
 7. **Concurrency & rate limits** — one `p-limit` pool (default 5, `--concurrency`) fetches runs
@@ -182,7 +182,7 @@ report file, cost only that artifact or file (download errors still abort the re
 transient, and aborting before the watermark advances is what makes them safe to retry); one
 repo's failure no longer stops a multi-repo run. Tracked `pending_runs` are now genuinely
 re-fetched by id, so a wide `--hours-back` window can no longer strand an old in-progress run
-behind the watermark. `state.json` is written atomically (temp file + rename); a stale lock
+behind the watermark. `state.json` is written atomically (fsynced temp file + rename); a stale lock
 whose recorded pid is gone is broken automatically, and SIGINT/SIGTERM release the lock before
 exiting. The JUnit sniff is anchored to the document head (a JSON report merely quoting
 `<testsuite` is never misrouted), and DOCTYPE-bearing JUnit documents parse with XML entity

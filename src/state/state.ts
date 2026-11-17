@@ -1,4 +1,6 @@
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename } from "node:fs/promises";
+import { dirname } from "node:path";
+import { syncDir, writeFileDurable } from "../store/durable.js";
 
 /** Current schema version for state.json (see D11). */
 export const STATE_SCHEMA_VERSION = 1;
@@ -57,6 +59,7 @@ export async function loadState(path: string): Promise<State> {
  */
 export async function saveState(path: string, state: State): Promise<void> {
   const tmp = `${path}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await writeFileDurable(tmp, `${JSON.stringify(state, null, 2)}\n`);
   await rename(tmp, path);
+  await syncDir(dirname(path));
 }

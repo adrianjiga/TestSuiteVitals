@@ -1,8 +1,9 @@
-import { readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readdir, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { compress } from "@mongodb-js/zstd";
 import { NDJSON_EXT, partitionFileMonth, readPartitionText, ZSTD_EXT } from "./compress.js";
 import { dedupKey } from "./dedup.js";
+import { syncDir, writeFileDurable } from "./durable.js";
 import { parseEventLine } from "./ndjson.js";
 import { repoDir } from "./partition.js";
 
@@ -21,8 +22,8 @@ export interface MonthCompaction {
  * is skipped. If a month somehow has both forms (a late append after compaction, or a crash
  * mid-compaction), they are merged into one `.ndjson.zst`.
  *
- * Crash safety: the new `.zst` is written to a temp file and atomically renamed before the raw
- * `.ndjson` is removed. A crash between leaves both files briefly; the reader dedups overlapping
+ * Crash safety: the new `.zst` is written to a temp file, fsynced, and atomically renamed (with the
+ * directory fsynced) before the raw `.ndjson` is removed. A crash between leaves both files briefly; the reader dedups overlapping
  * keys per month, so neither double-counts.
  */
 export async function compactRepo(
@@ -72,8 +73,9 @@ export async function compactRepo(
     const compressed = await compress(Buffer.from(text, "utf8"), ZSTD_LEVEL);
     const finalPath = join(dir, `${month}${ZSTD_EXT}`);
     const tmpPath = `${finalPath}.tmp`;
-    await writeFile(tmpPath, compressed);
+    await writeFileDurable(tmpPath, compressed);
     await rename(tmpPath, finalPath);
+    await syncDir(dir);
     await rm(join(dir, `${month}${NDJSON_EXT}`), { force: true });
 
     results.push({ month, bytesBefore, bytesAfter: compressed.length });

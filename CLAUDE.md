@@ -108,7 +108,8 @@ months (D2): each `<YYYY-MM>.ndjson` becomes `<YYYY-MM>.ndjson.zst`, the current
 uncompressed for cheap appends. The compression chokepoint is `src/store/compress.ts`
 (`@mongodb-js/zstd`, native but with prebuilt binaries so it runs on the Node-22 dev floor). The
 reader (`read.ts`) and append-dedup (`ndjson.ts`) read either form transparently. Crash safety:
-compact writes the new `.zst` to a temp file, atomically renames it, then removes the raw
+compact writes and fsyncs the new `.zst` as a temp file, atomically renames it (fsyncing the
+directory, `src/store/durable.ts`), then removes the raw
 `.ndjson`; if both forms coexist for a month (a crash window, or a late backfill into a compacted
 month) the reader dedups by key per month so nothing double-counts, and a later `compact` merges
 them back into one `.zst`, deduping by key during the merge — the reader's both-forms dedup only
@@ -145,13 +146,13 @@ injected palette and default to plain (tests assert on colorless output). Comman
 via `colorSupported` (picocolors' TTY / `NO_COLOR` / `FORCE_COLOR` detection). `--json` is never
 colored. Color is applied *after* column padding so ANSI codes never break table alignment.
 
-Idempotency contract (D12): `collect` appends durably *first* (the append is fsynced), then
+Idempotency contract (D12): `collect` appends durably *first* (the append and its directory are fsynced), then
 advances the watermark and saves state — so a crash between is recovered by re-collecting (the
 `(run_id, run_attempt, id, matrix)` dedup absorbs the overlap), never skipped. Running `collect`
 twice yields zero new writes. The watermark never passes an in-progress run; pending runs are also
 tracked by id in `pending_runs` and re-fetched by id once the window listing no longer surfaces
 them, so a wide `--hours-back` can never strand one. `state.json` is written atomically
-(temp + rename). A `<state-file>.lock` single-writer lock (`src/state/lock.ts`) rejects a
+(fsynced temp + rename). A `<state-file>.lock` single-writer lock (`src/state/lock.ts`) rejects a
 concurrent `collect` on the same state file, so the read-keys → append sequence never races
 itself; a stale lock whose recorded pid is dead is auto-broken, and SIGINT/SIGTERM release the
 lock before exiting. Error redaction (D6, `src/events/error.ts`) covers known token shapes
