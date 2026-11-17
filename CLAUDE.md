@@ -19,13 +19,15 @@ CI (`.github/workflows/ci.yml`) runs `npm audit` (prod deps, high+), `biome ci`,
 
 Run `npm run check` before every commit; after a feature, also run tests and update `README.md`
 and this file. Formatting is Biome (double quotes, 2-space, 100-col) — let it own style; don't
-hand-format.
+hand-format. Biome also formats Markdown (padded tables, `_emphasis_`), except under `.claude/`,
+whose agent and skill files carry frontmatter. `useMathMinMax` is off: it misfires on the
+ISO-string comparisons in `watermark.ts`/`filter.ts`, where `Math.max` would return `NaN`.
 
 ## Environment
 
 - **Node 24 is the floor** — `engines` and local dev, with CI also covering Node 26 — so Node 24
   runtime APIs are fine, but nothing newer. The
-  maintainer's nvm *default* alias is still 22.19, so a non-interactive shell can resolve Node 22;
+  maintainer's nvm _default_ alias is still 22.19, so a non-interactive shell can resolve Node 22;
   put Node 24 first on `PATH` (e.g. `nvm use 24`) before running the gates.
 - ESM throughout (`"type": "module"`). Relative imports **must** use `.js` specifiers even from `.ts`
   files (NodeNext resolution) — e.g. `import { resolveToken } from "./auth.js"`.
@@ -42,7 +44,7 @@ git-friendly files, then reports flakiness. It is a CLI with no server and no in
   `AuthError`. `resolveToken` takes injectable `env` and `runGhCli` so the chain is unit-tested
   without spawning `gh` or touching `process.env`. Mirror this DI style for anything touching the
   outside world.
-- **`src/github/client.ts`** — the *single* Octokit transport, built from a resolved token. Only token
+- **`src/github/client.ts`** — the _single_ Octokit transport, built from a resolved token. Only token
   resolution is pluggable; there is intentionally one transport.
 
 The **M1 walking skeleton is complete**. `collect` is wired end-to-end through:
@@ -68,7 +70,7 @@ both (`src/collect/config.ts` parses/validates and `resolveTargets` merges them 
 per-repo override → CLI flag → config default → built-in, de-duping repos named twice — the
 overridable fields are `hoursBack`, `concurrency`, `workflow`, and `excludeTriggers`). Collect-time
 filters (`src/collect/filter.ts`: `--workflow` glob, `--exclude-trigger` events) drop runs by
-*policy* — the watermark may pass excluded runs, unlike pending ones, so filtering a busy workflow
+_policy_ — the watermark may pass excluded runs, unlike pending ones, so filtering a busy workflow
 never stalls collection; `--exclude-trigger pull_request` is also the lever that keeps fork-PR
 artifacts out. A GitHub re-run keeps its run's `created_at`, so listing reaches
 `--rerun-lookback-hours` (default 48) behind the window and `src/collect/rerun.ts` keeps a run
@@ -88,7 +90,7 @@ folds them via an incremental `Aggregator` into one `TestAggregate` per test `id
 pass/fail/skip, pass-after-retry, retried/rerun runs, sha-keyed intermittence, fingerprint
 diversity — with no scoring opinion baked in.
 
-`score.ts` turns an aggregate into a 0–100 flake score. The premise: flaky = *inconsistency*, so
+`score.ts` turns an aggregate into a 0–100 flake score. The premise: flaky = _inconsistency_, so
 a consistently-failing test (broken, not flaky) scores ~0. It is a weighted blend of normalized
 signals — pass-after-retry rate (0.45), same-commit intermittence rate (0.30), failure-mode
 diversity beyond the first mode (0.15), workflow re-run rate (0.10) — over `eligibleRuns`
@@ -134,7 +136,7 @@ integration): one git-trees listing finds monorepo `package.json` files (shallow
 `node_modules` excluded — `packageJsonPaths`) and Java build files at any depth, falling back to
 root-only contents probes for huge/empty repos.
 
-Tier-3 artifact discovery (D9) lives in `fetchRun` (`src/artifacts/fetch.ts`): when a run has *no*
+Tier-3 artifact discovery (D9) lives in `fetchRun` (`src/artifacts/fetch.ts`): when a run has _no_
 report-name match, its remaining artifacts under `--max-artifact-mb` (default 100) are downloaded
 and extracted too, and the parse step's content sniff keeps only the real reports — so a report
 uploaded under an unexpected name is still collected. Oversized sniff candidates are counted and
@@ -149,12 +151,12 @@ score/signal) built over picocolors. `createPalette(enabled)` returns a no-op pa
 disabled, so rendering stays pure — `renderReport` and the `collect` print helpers take an
 injected palette and default to plain (tests assert on colorless output). Commands enable color
 via `colorSupported` (picocolors' TTY / `NO_COLOR` / `FORCE_COLOR` detection). `--json` is never
-colored. Color is applied *after* column padding so ANSI codes never break table alignment. Artifact-derived
+colored. Color is applied _after_ column padding so ANSI codes never break table alignment. Artifact-derived
 text (test titles, file/artifact names, parser errors) goes through `terminalSafe` before printing,
 so an ESC smuggled into a report cannot drive the terminal; `--json` and the dashboard escape it
 themselves.
 
-Idempotency contract (D12): `collect` appends durably *first* (the append and its directory are fsynced), then
+Idempotency contract (D12): `collect` appends durably _first_ (the append and its directory are fsynced), then
 advances the watermark and saves state — so a crash between is recovered by re-collecting (the
 `(run_id, run_attempt, id, matrix)` dedup absorbs the overlap), never skipped. Running `collect`
 twice yields zero new writes. The watermark never passes an in-progress run; pending runs are also
@@ -213,8 +215,8 @@ context beyond what `docs/` captures. The decisions that constrain code:
 - **Data layout:** partitioned NDJSON at `data/<owner>__<repo>/<YYYY-MM>.ndjson`; one record per test
   per run per matrix cell; every record carries `schema_version`.
 - **Test identity:** `id = hash(file + title_path)` only, with `file` normalized first
-  (`normalizeTestFile`: `/` separators, hosted/self-hosted/container workspace root stripped). The matrix (browser, viewport, …) is *always
-  a dimension, never identity*. Grouping by matrix is a report-time option, so changing it never
+  (`normalizeTestFile`: `/` separators, hosted/self-hosted/container workspace root stripped). The matrix (browser, viewport, …) is _always
+  a dimension, never identity_. Grouping by matrix is a report-time option, so changing it never
   orphans collected data.
 - **Idempotency:** dedup key is `(run_id, run_attempt, id, matrix)`. State (the watermark) advances
   **only after** a durable append, and never past an in-progress run. Re-running `collect` must always

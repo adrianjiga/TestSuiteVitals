@@ -14,9 +14,13 @@ One NDJSON record per test, per workflow run, per matrix cell.
   "flaky": true,
   "duration_ms": 2310,
   "attempts": [
-    {"n": 1, "status": "failed", "duration_ms": 2100,
-     "error": {"message": "Timed out waiting for...", "fingerprint": "e81b2d"}},
-    {"n": 2, "status": "passed", "duration_ms": 2310}
+    {
+      "n": 1,
+      "status": "failed",
+      "duration_ms": 2100,
+      "error": { "message": "Timed out waiting for...", "fingerprint": "e81b2d" }
+    },
+    { "n": 2, "status": "passed", "duration_ms": 2310 }
   ],
   "run": {
     "provider": "github",
@@ -29,7 +33,7 @@ One NDJSON record per test, per workflow run, per matrix cell.
     "trigger": "schedule",
     "started_at": "2026-06-10T07:00:14Z"
   },
-  "matrix": {"browser": "firefox", "viewport": "desktop", "group": "@ui"},
+  "matrix": { "browser": "firefox", "viewport": "desktop", "group": "@ui" },
   "collected_at": "2026-06-10T09:12:00Z"
 }
 ```
@@ -42,7 +46,7 @@ One NDJSON record per test, per workflow run, per matrix cell.
   consumers never parse the array.
 - `flaky` (per-event) — passed after at least one failed attempt.
 - `run.run_attempt` — a human clicking "re-run failed jobs" is a signal the test reporter
-  never sees. It is the attempt that *uploaded* the report's artifact, not the run's latest
+  never sees. It is the attempt that _uploaded_ the report's artifact, not the run's latest
   attempt: a partial re-run carries earlier attempts' artifacts over, and stamping those with
   the new attempt would double-count them under a second dedup key. Events collected before this
   rule carry the run's latest attempt instead (see

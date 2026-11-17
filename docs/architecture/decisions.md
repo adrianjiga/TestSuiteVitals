@@ -45,7 +45,7 @@ overlapping window would add those tests again under the new ones.
 
 **Corollary — `file` must be a location, never a run label.** Identity is only stable if both
 inputs are. Adapters therefore resolve `file` from the most location-like attribute available
-and never from something that varies with *how the run was invoked*. The JUnit adapter learned
+and never from something that varies with _how the run was invoked_. The JUnit adapter learned
 this the hard way: it ranked `<testsuite name>` above `<testcase classname>`, and TestNG/Surefire
 emits a different suite name per suite XML (`TestSuite` for `testng.xml`, `UI Tests` for
 `testng-ui.xml`, the class name when Surefire writes per-class files). One test picked up three
@@ -53,7 +53,7 @@ identities and its history split three ways. Resolution order is now
 `testcase@file → testsuite@file → classname → testsuite@name → "unknown"`.
 
 **Caveat this decision does not cover:** the "never orphans collected data" guarantee is about
-the report-time `--by-matrix` toggle. An identity *bug fix* necessarily re-keys history, and
+the report-time `--by-matrix` toggle. An identity _bug fix_ necessarily re-keys history, and
 there is no migration path — the affected repo's partitions must be deleted and re-collected,
 bounded by GitHub's artifact retention. Weigh that cost before changing how any adapter resolves
 `file` or `title_path`.
@@ -87,7 +87,7 @@ A single Octokit transport. Token resolution chain: `--token` → `GITHUB_TOKEN`
 1. List names + sizes — no downloads.
 2. Download report-glob matches: `*report*`, `*result*`, `*junit*`, `*blob*`, `*mochawesome*`.
    A match whose compressed size already exceeds the extraction budget is skipped (surfaced
-   as oversized) *before* download — it could only fail that budget after ballooning memory.
+   as oversized) _before_ download — it could only fail that budget after ballooning memory.
 3. Only if zero report-name matches were found, sniff remaining artifacts under
    `--max-artifact-mb` (default 100).
 
