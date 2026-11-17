@@ -34,6 +34,15 @@ dimension, never identity**. "Matrix joins identity" is a **report-time** groupi
 **Why:** one canonical history per test; changing the grouping setting never orphans
 collected data.
 
+`file` is normalized before hashing (`normalizeTestFile`): `\` becomes `/` and a GitHub Actions
+workspace root (`/home/runner/work/<repo>/<repo>/`, `D:\a\<repo>\<repo>\`, the macOS equivalent,
+a self-hosted `…/_work/<repo>/<repo>/` or a container job's `/__w/<repo>/<repo>/`) is stripped, so
+emitters that write absolute or OS-native paths still give a test one id across runners.
+Mochawesome's relative `file` is preferred over Mocha's absolute `fullFile`.
+Relative paths and class names are unchanged by this, so their ids are too; only data collected
+earlier from an absolute- or backslash-path emitter keeps its old ids, and re-collecting an
+overlapping window would add those tests again under the new ones.
+
 **Corollary — `file` must be a location, never a run label.** Identity is only stable if both
 inputs are. Adapters therefore resolve `file` from the most location-like attribute available
 and never from something that varies with *how the run was invoked*. The JUnit adapter learned
@@ -105,5 +114,11 @@ Dedup key = `(run_id, run_attempt, id, matrix)`. State advances **only after** a
 append. The watermark never passes an in-progress run; an in-progress run the window listing
 no longer surfaces (a wide `--hours-back` saw it once) is re-fetched by id from `pending_runs`
 until it completes, so advancing past it never loses it.
+
+`run_attempt` is the attempt that uploaded each event's artifact. Data collected before that
+change stamped every event of a partially re-run run with the run's latest attempt, so
+explicitly re-collecting such a run (a `--hours-back` backfill over it) stores its carried-over
+results again under the corrected attempt. Upgrades avoid this on their own: the re-run lookback
+treats re-runs collected before the upgrade as already collected.
 
 **Why:** re-runs are always safe; nothing is silently skipped.

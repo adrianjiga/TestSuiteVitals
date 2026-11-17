@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import type { TestEvent } from "../events/event.js";
 import { readPartitionText } from "./compress.js";
 import { dedupKey } from "./dedup.js";
+import { syncDir } from "./durable.js";
 import { partitionMonth, partitionPath } from "./partition.js";
 
 export interface AppendResult {
@@ -54,6 +55,7 @@ export async function appendEvents(
       } finally {
         await handle.close();
       }
+      await syncDir(dirname(path));
     }
   }
 

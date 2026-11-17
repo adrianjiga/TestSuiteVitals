@@ -58,8 +58,9 @@ export function parseSince(value: string | undefined, now: Date = new Date()): D
     return new Date(now.getTime() - amount * unitHours * 60 * 60 * 1000);
   }
 
-  const absolute = new Date(value);
-  if (Number.isNaN(absolute.getTime())) {
+  const iso = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}\S*)?$/.test(value.trim());
+  const absolute = new Date(value.trim());
+  if (!iso || Number.isNaN(absolute.getTime())) {
     throw new Error(
       `Invalid --since "${value}": expected an ISO timestamp or a span like 30d or 12h.`,
     );

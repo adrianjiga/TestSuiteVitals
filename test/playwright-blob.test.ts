@@ -100,4 +100,50 @@ describe("parsePlaywrightBlob", () => {
     })}`;
     expect(parsePlaywrightBlob(orphan)).toHaveLength(0);
   });
+
+  it("judges results against the test's expectedStatus, as Playwright does", () => {
+    const report = [
+      { method: "onProject", params: { project } },
+      {
+        method: "onTestEnd",
+        params: {
+          test: { testId: "t1", expectedStatus: "failed" },
+          result: { status: "failed", duration: 10, retry: 0, errors: [{ message: "known bug" }] },
+        },
+      },
+      {
+        method: "onTestEnd",
+        params: {
+          test: { testId: "t2", expectedStatus: "failed" },
+          result: { status: "passed", duration: 10, retry: 0, errors: [] },
+        },
+      },
+    ]
+      .map((l) => JSON.stringify(l))
+      .join("\n");
+
+    const tests = parsePlaywrightBlob(report);
+    const expectedFail = tests.find((t) => t.title_path.includes("works"));
+    const unexpectedPass = tests.find((t) => t.title_path.includes("is flaky"));
+    expect(expectedFail?.status).toBe("passed");
+    expect(expectedFail?.attempts[0]?.error).toBeUndefined();
+    expect(unexpectedPass?.status).toBe("failed");
+  });
+
+  it("treats a test expected to be skipped as skipped", () => {
+    const report = [
+      { method: "onProject", params: { project } },
+      {
+        method: "onTestEnd",
+        params: {
+          test: { testId: "t1", expectedStatus: "skipped" },
+          result: { status: "skipped", duration: 0, retry: 0, errors: [] },
+        },
+      },
+    ]
+      .map((l) => JSON.stringify(l))
+      .join("\n");
+
+    expect(parsePlaywrightBlob(report)[0]?.status).toBe("skipped");
+  });
 });

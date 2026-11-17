@@ -93,4 +93,12 @@ describe("extractZipNested", () => {
       ArchiveTooLargeError,
     );
   });
+
+  it("counts every nested archive against one budget for the whole artifact", async () => {
+    const inner = () => zipSync({ "part.bin": new Uint8Array(400 * 1024) }, { level: 9 });
+    const outer = zipSync({ "a.zip": inner(), "b.zip": inner(), "c.zip": inner() }, { level: 0 });
+    await expect(extractZipNested(outer, dir, 2, 1024 * 1024)).rejects.toThrow(
+      ArchiveTooLargeError,
+    );
+  });
 });

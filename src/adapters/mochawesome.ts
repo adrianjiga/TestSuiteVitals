@@ -46,14 +46,14 @@ interface MochaReport {
  * Each `results[]` entry is a per-spec root suite holding a tree of `suites`/`tests`;
  * the walk accumulates describe titles into the title path, skipping the root node's
  * title (the spec filename, not a describe). Mochawesome is flat per test — one attempt,
- * never flaky — like JUnit; the richer `attempts[]` comes from Playwright.
+ * never flaky; the richer `attempts[]` comes from Playwright and Surefire retries.
  */
 export function parseMochawesome(content: string, options: RedactOptions = {}): ParsedTest[] {
   const report = JSON.parse(content) as MochaReport;
   const tests: ParsedTest[] = [];
 
   for (const result of report.results ?? []) {
-    const file = result.fullFile || result.file || "unknown";
+    const file = result.file || result.fullFile || "unknown";
     walkSuite(result, file, [], tests, options);
   }
 

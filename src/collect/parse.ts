@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { type DetectedReport, detectAndParse } from "../adapters/dispatch.js";
 import type { RunReports } from "../artifacts/fetch.js";
+import { terminalSafe } from "../colors.js";
 import { buildEvent, type RunContext, type TestEvent } from "../events/event.js";
 import type { WorkflowRun } from "../github/runs.js";
 import { type MatrixPattern, matrixForArtifact } from "./matrix.js";
@@ -63,8 +64,7 @@ export async function parseRunReports(
   const summary = emptySummary();
 
   for (const report of reports) {
-    const run = runContext(repoSlug, report.run);
-    for (const { path: file, artifact } of report.files) {
+    for (const { path: file, artifact, attempt } of report.files) {
       if (!CANDIDATE_EXTENSIONS.has(extname(file).toLowerCase())) {
         continue;
       }
@@ -79,7 +79,9 @@ export async function parseRunReports(
         // XML, absurd nesting) is deterministic content — retrying yields the same bytes — so
         // it costs this one file, with a warning, never the whole collect (F1).
         summary.filesFailed++;
-        console.warn(`Skipping unparseable report file ${file}: ${(error as Error).message}`);
+        console.warn(
+          terminalSafe(`Skipping unparseable report file ${file}: ${(error as Error).message}`),
+        );
         continue;
       }
       if (!detected) {
@@ -91,7 +93,7 @@ export async function parseRunReports(
         events.push(
           buildEvent(test, {
             framework: detected.framework,
-            run,
+            run: runContext(repoSlug, report.run, attempt),
             matrix: matrixForArtifact(artifact, options.matrixPattern),
             collected_at: collectedAt,
           }),
@@ -115,12 +117,12 @@ function countStatus(summary: ParseSummary, status: TestEvent["status"]): void {
   }
 }
 
-function runContext(repo: string, run: WorkflowRun): RunContext {
+function runContext(repo: string, run: WorkflowRun, attempt: number): RunContext {
   return {
     provider: "github",
     repo,
     run_id: run.run_id,
-    run_attempt: run.run_attempt,
+    run_attempt: attempt,
     workflow: run.workflow,
     branch: run.branch,
     sha: run.sha,

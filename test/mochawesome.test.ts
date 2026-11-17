@@ -103,4 +103,23 @@ describe("parseMochawesome", () => {
     expect(t?.attempts).toHaveLength(1);
     expect(t?.attempts[0]).toMatchObject({ n: 1, status: "passed", duration_ms: 12 });
   });
+
+  it("prefers the relative file over Mocha's absolute fullFile", () => {
+    const json = JSON.stringify({
+      stats: { tests: 1, passes: 1, failures: 0, pending: 0, passPercent: 100, testsRegistered: 1 },
+      results: [
+        {
+          uuid: "r",
+          title: "",
+          root: true,
+          fullFile: "/home/runner/work/app/app/test/login.spec.js",
+          file: "test/login.spec.js",
+          tests: [test()],
+          suites: [],
+        },
+      ],
+      meta: {},
+    });
+    expect(parseMochawesome(json)[0]?.file).toBe("test/login.spec.js");
+  });
 });

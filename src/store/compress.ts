@@ -1,5 +1,12 @@
 import { readFile } from "node:fs/promises";
-import { decompress } from "@mongodb-js/zstd";
+import { promisify } from "node:util";
+import { constants, zstdCompress, zstdDecompress } from "node:zlib";
+
+const compressAsync = promisify(zstdCompress);
+const decompressAsync = promisify(zstdDecompress);
+
+/** zstd level: high ratio is worth the CPU since closed months are written once (D2). */
+const ZSTD_LEVEL = 19;
 
 /** Uncompressed monthly partition extension (D1). */
 export const NDJSON_EXT = ".ndjson";
@@ -19,7 +26,14 @@ export function partitionFileMonth(name: string): string | undefined {
 export async function readPartitionText(path: string): Promise<string> {
   const buf = await readFile(path);
   if (path.endsWith(".zst")) {
-    return (await decompress(buf)).toString("utf8");
+    return (await decompressAsync(buf)).toString("utf8");
   }
   return buf.toString("utf8");
+}
+
+/** Compresses a closed month's partition text into a `.ndjson.zst` payload. */
+export function compressPartition(text: string): Promise<Buffer> {
+  return compressAsync(Buffer.from(text, "utf8"), {
+    params: { [constants.ZSTD_c_compressionLevel]: ZSTD_LEVEL },
+  });
 }

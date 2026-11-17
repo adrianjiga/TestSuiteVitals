@@ -38,3 +38,20 @@ export const colorSupported: boolean = pc.isColorSupported;
 
 /** No-op palette — the default for pure rendering and tests. */
 export const plainPalette: Palette = createPalette(false);
+
+/**
+ * Replaces control characters in artifact-derived text before it is printed: tab, newline and
+ * carriage return become a space, every other one U+FFFD.
+ */
+export function terminalSafe(text: string): string {
+  let safe = "";
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    if (code > 0x1f && (code < 0x7f || code > 0x9f)) {
+      safe += char;
+    } else {
+      safe += "\t\n\r".includes(char) ? " " : "\uFFFD";
+    }
+  }
+  return safe;
+}

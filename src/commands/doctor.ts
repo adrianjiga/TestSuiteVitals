@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { colorSupported, createPalette, type Palette } from "../colors.js";
+import { colorSupported, createPalette, type Palette, terminalSafe } from "../colors.js";
 import {
   type Diagnosis,
   diagnose,
@@ -13,7 +13,7 @@ import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
 import { getRepoFile, listRepoTree, repoHasFile } from "../github/contents.js";
 import { parseRepoRef, type RepoRef, repoSlug } from "../github/repo.js";
-import { classifyRuns, listRunsSince } from "../github/runs.js";
+import { listRecentCompletedRuns } from "../github/runs.js";
 
 /** How many recent completed runs to inspect for uploaded artifacts. */
 const RUNS_TO_INSPECT = 10;
@@ -57,10 +57,10 @@ export const doctorCommand = defineCommand({
 async function gatherSignals(client: GitHubClient, ref: RepoRef): Promise<RepoSignals> {
   const { octokit } = client;
   const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const { completed } = classifyRuns(await listRunsSince(octokit, ref, since));
+  const completed = await listRecentCompletedRuns(octokit, ref, since, RUNS_TO_INSPECT);
 
   const artifactNames = new Set<string>();
-  for (const run of completed.slice(0, RUNS_TO_INSPECT)) {
+  for (const run of completed) {
     for (const artifact of await listRunArtifacts(octokit, ref, run.run_id)) {
       artifactNames.add(artifact.name);
     }
@@ -96,7 +96,9 @@ function printDiagnosis(slug: string, signals: RepoSignals, result: Diagnosis, p
 
   if (result.uploadsReports) {
     console.log(
-      p.good(`\n✓ ${slug} uploads parseable reports: ${result.matchedArtifacts.join(", ")}.`),
+      p.good(
+        `\n✓ ${slug} uploads parseable reports: ${terminalSafe(result.matchedArtifacts.join(", "))}.`,
+      ),
     );
     console.log(`  Run \`suitevitals collect --repo ${slug}\` to start collecting.`);
     return;

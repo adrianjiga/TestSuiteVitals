@@ -6,7 +6,14 @@ import {
 } from "../src/github/artifacts.js";
 
 function artifact(overrides: Partial<ArtifactMeta>): ArtifactMeta {
-  return { id: 1, name: "artifact", size_bytes: 100, expired: false, ...overrides };
+  return {
+    id: 1,
+    name: "artifact",
+    size_bytes: 100,
+    created_at: "2026-06-23T10:05:00Z",
+    expired: false,
+    ...overrides,
+  };
 }
 
 describe("matchesReportArtifact", () => {

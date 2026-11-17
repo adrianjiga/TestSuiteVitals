@@ -22,7 +22,7 @@ function run(id: number): WorkflowRun {
 }
 
 function artifact(id: number, name: string, expired = false): ArtifactMeta {
-  return { id, name, size_bytes: 100, expired };
+  return { id, name, size_bytes: 100, created_at: "2026-06-23T10:05:00Z", expired };
 }
 
 const reportZip = zipSync({ "junit.xml": strToU8("<testsuites/>") });
@@ -40,6 +40,7 @@ describe("fetchReportArtifacts", () => {
 
   it("downloads only report matches and extracts their files", async () => {
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => [
         artifact(10, "playwright-report"),
         artifact(11, "videos"),
@@ -62,6 +63,7 @@ describe("fetchReportArtifacts", () => {
 
   it("dry-run counts what would be fetched but downloads nothing", async () => {
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => [artifact(10, "junit-report")]),
       download: vi.fn(async () => reportZip),
     };
@@ -78,6 +80,7 @@ describe("fetchReportArtifacts", () => {
 
   it("aggregates across multiple runs", async () => {
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => [artifact(10, "report")]),
       download: vi.fn(async () => reportZip),
     };
@@ -92,6 +95,7 @@ describe("fetchReportArtifacts", () => {
     let inFlight = 0;
     let peak = 0;
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => {
         inFlight++;
         peak = Math.max(peak, inFlight);
@@ -113,6 +117,7 @@ describe("fetchReportArtifacts", () => {
     // Each run's sole artifact id == its run id. Run 1's download is the slowest, so it
     // finishes last — yet the reports array must still be ordered by the input runs.
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async (runId: number) => [artifact(runId, "report")]),
       download: vi.fn(async (id: number) => {
         await new Promise((resolve) => setTimeout(resolve, (4 - id) * 10));
@@ -134,6 +139,7 @@ describe("fetchReportArtifacts", () => {
 
   it("reports progress once per run", async () => {
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => []),
       download: vi.fn(async () => reportZip),
     };
@@ -150,6 +156,7 @@ describe("fetchReportArtifacts", () => {
 
   it("sniffs unnamed artifacts (tier 3) only when a run has no name match", async () => {
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       // No report-name match — the report is uploaded as "test-output".
       list: vi.fn(async () => [artifact(20, "test-output"), artifact(21, "screenshots")]),
       download: vi.fn(async () => reportZip),
@@ -166,6 +173,7 @@ describe("fetchReportArtifacts", () => {
 
   it("does not sniff when a name match exists — skipped artifacts stay un-downloaded", async () => {
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => [artifact(30, "junit-report"), artifact(31, "videos")]),
       download: vi.fn(async () => reportZip),
     };
@@ -181,6 +189,7 @@ describe("fetchReportArtifacts", () => {
   it("skips oversized sniff candidates and reports them, never silently", async () => {
     const big = { id: 40, name: "huge-bundle", size_bytes: 200 * 1024 * 1024, expired: false };
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => [big, artifact(41, "small-output")]),
       download: vi.fn(async () => reportZip),
     };
@@ -200,6 +209,7 @@ describe("fetchReportArtifacts", () => {
     // waste memory — it must be skipped (and surfaced) without ever calling download.
     const huge = { id: 60, name: "playwright-report", size_bytes: 2 * 1024 * 1024, expired: false };
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => [huge, artifact(61, "junit-report")]),
       download: vi.fn(async () => reportZip),
     };
@@ -219,6 +229,7 @@ describe("fetchReportArtifacts", () => {
     // GitHub-reported size_bytes is small, so only the extraction-time guard can catch it.
     const bomb = zipSync({ "huge.bin": new Uint8Array(2 * 1024 * 1024) });
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => [artifact(50, "bomb-report"), artifact(51, "junit-report")]),
       download: vi.fn(async (id: number) => (id === 50 ? bomb : reportZip)),
     };
@@ -234,6 +245,7 @@ describe("fetchReportArtifacts", () => {
 
   it("warns and continues when an artifact's archive fails to extract", async () => {
     const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
       list: vi.fn(async () => [artifact(70, "broken-report"), artifact(71, "junit-report")]),
       download: vi.fn(async (id: number) => (id === 70 ? strToU8("not a zip") : reportZip)),
     };
@@ -249,5 +261,90 @@ describe("fetchReportArtifacts", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it("tags each file with the attempt that uploaded its artifact on a re-run", async () => {
+    const carried = { ...artifact(80, "junit-report"), created_at: "2026-06-23T10:05:00Z" };
+    const rerun = { ...artifact(81, "junit-report-rerun"), created_at: "2026-06-23T11:05:00Z" };
+    const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => ["2026-06-23T10:00:00Z", "2026-06-23T11:00:00Z"]),
+      list: vi.fn(async () => [carried, rerun]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { reports } = await fetchReportArtifacts(
+      fetcher,
+      [{ ...run(1), run_attempt: 2 }],
+      workdir,
+    );
+
+    expect(reports[0]?.files.map((f) => [f.artifact, f.attempt])).toEqual([
+      ["junit-report", 1],
+      ["junit-report-rerun", 2],
+    ]);
+  });
+
+  it("skips the attempt lookup for a run that was never re-run", async () => {
+    const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => []),
+      list: vi.fn(async () => [artifact(90, "junit-report")]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { reports } = await fetchReportArtifacts(fetcher, [run(1)], workdir);
+
+    expect(fetcher.attemptStarts).not.toHaveBeenCalled();
+    expect(reports[0]?.files[0]?.attempt).toBe(1);
+  });
+
+  it("keeps the run's attempt for an artifact with no creation time", async () => {
+    const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => ["2026-06-23T10:00:00Z", "2026-06-23T11:00:00Z"]),
+      list: vi.fn(async () => [{ ...artifact(95, "junit-report"), created_at: "" }]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { reports } = await fetchReportArtifacts(
+      fetcher,
+      [{ ...run(1), run_attempt: 2 }],
+      workdir,
+    );
+
+    expect(reports[0]?.files[0]?.attempt).toBe(2);
+  });
+
+  it("skips the attempt lookup for a re-run with nothing to download", async () => {
+    const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => ["2026-06-23T10:00:00Z", "2026-06-23T11:00:00Z"]),
+      list: vi.fn(async () => [artifact(96, "old-report", true)]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    await fetchReportArtifacts(fetcher, [{ ...run(1), run_attempt: 3 }], workdir);
+
+    expect(fetcher.attemptStarts).not.toHaveBeenCalled();
+  });
+
+  it("skips artifacts from attempts that were already collected", async () => {
+    const carried = { ...artifact(97, "junit-report"), created_at: "2026-06-23T10:05:00Z" };
+    const rerun = { ...artifact(98, "junit-report-rerun"), created_at: "2026-06-23T11:05:00Z" };
+    const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => ["2026-06-23T10:00:00Z", "2026-06-23T11:00:00Z"]),
+      list: vi.fn(async () => [carried, rerun]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { summary, reports } = await fetchReportArtifacts(
+      fetcher,
+      [{ ...run(1), run_attempt: 2 }],
+      workdir,
+      { collectedAttempt: () => 1 },
+    );
+
+    expect(fetcher.download).toHaveBeenCalledTimes(1);
+    expect(fetcher.download).toHaveBeenCalledWith(98);
+    expect(summary.collectedArtifacts).toBe(1);
+    expect(summary.reportArtifacts).toBe(1);
+    expect(reports[0]?.files.map((f) => f.attempt)).toEqual([2]);
   });
 });

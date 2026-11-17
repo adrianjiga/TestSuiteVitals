@@ -1,6 +1,8 @@
+import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
+import { withDataDirLock } from "../state/lock.js";
 import { compactRepo, listRepoSlugs } from "../store/compact.js";
 
 const DEFAULT_DATA_DIR = "data";
@@ -8,7 +10,7 @@ const DEFAULT_DATA_DIR = "data";
 export const compactCommand = defineCommand({
   meta: {
     name: "compact",
-    description: "Compress closed-month partitions with zstd to reclaim disk (D2)",
+    description: "Compress closed-month partitions with zstd to reclaim disk",
   },
   args: {
     repo: {
@@ -29,31 +31,33 @@ export const compactCommand = defineCommand({
     const slugs = args.repo ? [repoSlug(parseRepoRef(args.repo))] : await listRepoSlugs(dataDir);
 
     if (slugs.length === 0) {
-      console.log(palette.dim("No collected repositories to compact."));
+      console.log(palette.dim(`No collected repositories to compact in ${resolve(dataDir)}.`));
       return;
     }
 
-    let months = 0;
-    let before = 0;
-    let after = 0;
-    for (const slug of slugs) {
-      for (const result of await compactRepo(dataDir, slug, currentMonth)) {
-        months++;
-        before += result.bytesBefore;
-        after += result.bytesAfter;
-        const saved = result.bytesBefore > 0 ? 1 - result.bytesAfter / result.bytesBefore : 0;
-        console.log(
-          `  ${palette.repo(slug)} ${result.month}: ${formatBytes(result.bytesBefore)} → ` +
-            `${formatBytes(result.bytesAfter)} ${palette.good(`(${Math.round(saved * 100)}% smaller)`)}`,
-        );
+    await withDataDirLock(dataDir, async () => {
+      let months = 0;
+      let before = 0;
+      let after = 0;
+      for (const slug of slugs) {
+        for (const result of await compactRepo(dataDir, slug, currentMonth)) {
+          months++;
+          before += result.bytesBefore;
+          after += result.bytesAfter;
+          const saved = result.bytesBefore > 0 ? 1 - result.bytesAfter / result.bytesBefore : 0;
+          console.log(
+            `  ${palette.repo(slug)} ${result.month}: ${formatBytes(result.bytesBefore)} → ` +
+              `${formatBytes(result.bytesAfter)} ${palette.good(`(${Math.round(saved * 100)}% smaller)`)}`,
+          );
+        }
       }
-    }
 
-    if (months === 0) {
-      console.log(palette.dim("Nothing to compact — all closed months are already compressed."));
-      return;
-    }
-    printTotal(months, before, after, palette);
+      if (months === 0) {
+        console.log(palette.dim("Nothing to compact — all closed months are already compressed."));
+        return;
+      }
+      printTotal(months, before, after, palette);
+    });
   },
 });
 

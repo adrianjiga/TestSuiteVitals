@@ -11,14 +11,16 @@ suitevitals collect
   --workflow <glob>       only collect matching workflows (default: all)
   --exclude-trigger <l>   skip runs fired by these events (comma-separated)
   --max-runs <n>          cap completed runs per invocation, oldest first
+  --rerun-lookback-hours  re-list this far back for re-runs (default 48, 0 disables)
   --max-artifact-mb <n>   default 100 (tier-3 sniff cap)
   --dry-run               show what would be fetched
   --full-errors
 ```
 
-**Window logic:** with state, collect since the watermark; `--hours-back` overrides to force a
-wider backfill (dedup makes overlap safe); the first run defaults to 72h with a hint about
-going wider.
+**Window logic:** with state, collect since the watermark; `--hours-back` can only widen that
+window (the earlier of the two wins, dedup makes overlap safe) — never narrow it, or runs between
+the watermark and `now - hoursBack` would be skipped while the watermark passed them; the first
+run defaults to 72h with a hint about going wider.
 
 **Backfill ceiling:** runs are listable far back, but artifacts expire per repo retention
 (often 14–90 days). The summary must report `N runs had expired artifacts` — never thin out
@@ -27,8 +29,11 @@ silently.
 ## Pipeline (per repo)
 
 1. **Load state** → watermark + `pending_runs`.
-2. **List runs** — paginate runs newest-first; stop past the window; re-check `pending_runs`
-   explicitly.
+2. **List runs** — list by `created` range from the window start, or `--rerun-lookback-hours`
+   (default 48) earlier once the repo has a watermark, halving any range past GitHub's 1000-result
+   cap. Runs from the lookback stretch are kept only when their attempt is newer than the one
+   collected (`rerun_attempts`); tracked `pending_runs` the listing returns are kept, and the rest
+   are re-checked by id.
 3. **Filter & classify** — `--workflow`/`--exclude-trigger` drop runs by policy (the watermark
    *may* pass those, or excluding a busy workflow would stall it forever); the rest classify as
    completed → collect, in-progress/queued → `pending_runs` (the watermark does not advance
@@ -38,17 +43,21 @@ silently.
    dir; expired artifacts are counted and reported. A report match whose *compressed* size
    already exceeds the extraction budget is skipped (as oversized) before download, so it can
    never balloon memory. Extraction enforces a decompressed-size budget (default 500 MB,
-   checked from the zip's declared entry sizes *before* inflating), so a zip bomb is counted
-   as oversized and skipped, never inflated; any other extraction failure (corrupt or hostile
-   archive) costs that one artifact, with a warning — download errors still abort the repo,
-   since they are transient and the watermark has not advanced.
+   checked from the zip's declared entry sizes *before* inflating, and shared by every archive
+   nested inside the artifact), so a zip bomb is counted as oversized and skipped, never
+   inflated; any other extraction failure (corrupt or hostile archive) costs that one artifact,
+   with a warning — download errors still abort the repo, since they are transient and the
+   watermark has not advanced. Each artifact of a re-run is attributed to the attempt that
+   uploaded it, and artifacts from attempts already collected are skipped before download.
 5. **Adapter dispatch** by sniffing extracted files: `<testsuites>` root → JUnit; JSON with
    `config` + `suites` → Playwright; JSON with `stats` + `results` → Mochawesome. A per-repo
    config override wins over sniffing. A candidate file that throws during read or parse is
    warned and skipped, never fatal.
-6. **Normalize & append** events with dedup; the append is fsynced, and state is updated only
-   after it succeeds. A single-writer lock (`<state-file>.lock`) rejects a concurrent collect
-   on the same state file, so the read-keys → append sequence never races itself.
+6. **Normalize & append** events with dedup; the append (and its directory) is fsynced, and state
+   is updated only after it succeeds. A single-writer lock (`<state-file>.lock`) rejects a concurrent collect
+   on the same state file, so the read-keys → append sequence never races itself; a
+   `<data-dir>/.lock`, also taken by `compact` and `prune`, keeps them from deleting a partition
+   file that a collect is appending to.
 7. **Concurrency & rate limits** — one `p-limit` pool (default 5, `--concurrency`) fetches runs
    in parallel. Backoff is handled at the transport by GitHub's official `@octokit/plugin-throttling`
    (honors primary/secondary rate-limit headers and `Retry-After`, waits then retries up to 3×) and
@@ -87,7 +96,7 @@ silently.
 The `collect` command currently authenticates (single Octokit transport, token chain per
 [D8](decisions.md#d8--auth-one-transport-pluggable-token-resolution)), loads state, computes
 the collection window (watermark / `--hours-back` / 72h default), lists workflow runs since
-that window, classifies them into completed vs. pending, and for the completed runs performs
+that window plus the re-run lookback, classifies them into completed vs. pending, and for the completed runs performs
 tiered artifact discovery ([D9](decisions.md#d9--artifact-discovery-tiered)): list
 artifact names/sizes (tier 1), download the report-glob matches and extract them into a temp dir
 (tier 2), and — only when a run has *no* name match — download and extract its remaining artifacts
@@ -109,14 +118,19 @@ never turns into rate-limit failures.
 The extracted reports are then dispatched to a matching adapter by content sniff and parsed into
 normalized events. Implemented adapters:
 
-- **JUnit** (`<testsuites>`/`<testsuite>` root) — flat, one attempt per test; non-JUnit XML
+- **JUnit** (`<testsuites>`/`<testsuite>` root, suites nested at any depth, an inner suite
+  inheriting the enclosing `file`) — one attempt per test, except Surefire retries
+  (`rerunFailingTestsCount`): `<flakyFailure>`/`<flakyError>` before a pass become failed attempts
+  and mark the test flaky, `<rerunFailure>`/`<rerunError>` after a `<failure>` become failed
+  retries; non-JUnit XML
   (e.g. TestNG's `testng-results.xml`) is skipped.
 - **Playwright blob** (`report.jsonl` teleReporter stream) — builds the suite tree from
-  `onProject`/`onBegin`, groups `onTestEnd` retries into `attempts[]`, and derives the **matrix**
+  `onProject`/`onBegin`, groups `onTestEnd` retries into `attempts[]` (each judged against the
+  test's `expectedStatus`, so a `test.fail()` that fails passes), and derives the **matrix**
   from the project name. This is what sharded Playwright CI uploads.
 - **Mochawesome** (`stats` + `results` JSON) — Cypress/Mocha's per-spec report. Recursively walks
   the `suites`/`tests` tree, skipping the root node's title (the spec filename, not a describe).
-  Flat per test (one attempt, never flaky), like JUnit; status comes from `pending`/`skipped` first,
+  Flat per test (one attempt, never flaky); status comes from `pending`/`skipped` first,
   then `state`/`pass`/`fail`. No matrix dimension.
 
 Failure messages are redacted and truncated
@@ -180,13 +194,14 @@ report file, cost only that artifact or file (download errors still abort the re
 transient, and aborting before the watermark advances is what makes them safe to retry); one
 repo's failure no longer stops a multi-repo run. Tracked `pending_runs` are now genuinely
 re-fetched by id, so a wide `--hours-back` window can no longer strand an old in-progress run
-behind the watermark. `state.json` is written atomically (temp file + rename); a stale lock
+behind the watermark. `state.json` is written atomically (fsynced temp file + rename); a stale lock
 whose recorded pid is gone is broken automatically, and SIGINT/SIGTERM release the lock before
 exiting. The JUnit sniff is anchored to the document head (a JSON report merely quoting
 `<testsuite` is never misrouted), and DOCTYPE-bearing JUnit documents parse with XML entity
 expansion disabled (blocks quadratic entity amplification). The
 [D6](decisions.md#d6--error-storage-redacted--truncated-by-default) truncation budget now caps
-the kept first line too, and redaction also covers GitLab, npm, and OpenAI-style token shapes.
+the kept first line too, and redaction also covers GitLab, npm, OpenAI-style, Stripe and Google API
+token shapes, plus secret-named keys in quoted/JSON and `--flag value` forms.
 Matrix cells serialize as JSON inside dedup/grouping keys, so cell content (`,`, `=`) can never
 make two different cells collide. CI runs with a read-only token and audits production
 dependencies.
@@ -201,11 +216,28 @@ filters on `report` and `dashboard`, the `prune` retention command, and monorepo
 ### Known gaps
 
 Run listing filters by *creation* time (`created>=…`), and a GitHub re-run keeps the original
-run's `created_at`. Two consequences: a re-run of a run created before the current window is
-not seen (its new attempt is collected only if a later `--hours-back` backfill covers the
-creation date), and when such a backfill does re-collect a re-run, artifacts persisted from
-attempt 1 are recorded under the new attempt number — a different dedup key, so those events
-can double-count. Both are edge cases of the `rerun` signal, not the core pass/fail history.
+run's `created_at`, so the window past the watermark never shows a new attempt of an older run.
+Listing therefore reaches `--rerun-lookback-hours` (default 48) behind the window start
+(`src/collect/rerun.ts`); a run from that stretch is collected only when its `run_attempt` is
+above the highest attempt already collected for it (`rerun_attempts` in state, kept only for
+listed runs above attempt 1), so the lookback never re-downloads already-collected runs. A run a
+filter excludes is recorded too, so it is not re-selected every collect. A repo collected before
+`rerun_attempts` existed seeds it from its first listing (`initialCollectedAttempts`): the stored
+data already covers those runs, and re-collecting them would store carried-over results again
+under new dedup keys. Tracked pending runs found in the listing are kept from it rather than
+re-fetched by id. A re-run older than the lookback is still collected only by a `--hours-back`
+backfill covering its creation date.
+
+GitHub returns at most 1000 runs for a `created`-filtered listing, however many pages exist.
+Listing queries explicit `created:start..end` ranges and halves any range whose `total_count`
+exceeds the cap until every slice fits (`listRunsWindowed`), de-duping boundary runs by id —
+paging a capped listing would stop at the newest 1000 and let the watermark pass the rest.
+
+A partial re-run ("re-run failed jobs") carries the untouched jobs' artifacts over, so a run's
+artifact list mixes attempts. Each artifact is attributed to the latest attempt that had started
+when it was created (`attemptForArtifact`, one `GET …/attempts/{n}` per extra attempt, only for
+re-run runs), and its events carry that attempt — never the run's current one, which would put
+carried-over results under a second dedup key and double-count them.
 
 The collector is **v1 feature-complete (M1–M5)**. M1 was the idempotent walking skeleton; M2 added
 the Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency,

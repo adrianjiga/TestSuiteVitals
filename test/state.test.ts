@@ -51,6 +51,14 @@ describe("state", () => {
     expect(await loadState(path)).toEqual(next);
   });
 
+  it("repoState fills in pending_runs missing from a hand-edited entry", () => {
+    const state = { schema_version: 1, repos: { "o/r": { watermark: "2026-06-01T00:00:00Z" } } };
+    expect(repoState(state as never, "o/r")).toEqual({
+      watermark: "2026-06-01T00:00:00Z",
+      pending_runs: [],
+    });
+  });
+
   it("repoState yields an empty entry for an unknown repo", () => {
     expect(repoState(emptyState(), "owner/name")).toEqual({ pending_runs: [] });
   });

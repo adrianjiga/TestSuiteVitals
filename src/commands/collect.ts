@@ -13,9 +13,17 @@ import { type CollectTarget, loadConfig, resolveTargets } from "../collect/confi
 import { capRuns, filterRuns, watermarkDisposal } from "../collect/filter.js";
 import { compileMatrixPattern } from "../collect/matrix.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
+import {
+  alreadyCollectedAttempt,
+  DEFAULT_RERUN_LOOKBACK_HOURS,
+  initialCollectedAttempts,
+  listingStart,
+  nextCollectedAttempts,
+  selectRuns,
+} from "../collect/rerun.js";
 import { nextWatermark } from "../collect/watermark.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
-import { colorSupported, createPalette, type Palette } from "../colors.js";
+import { colorSupported, createPalette, type Palette, terminalSafe } from "../colors.js";
 import { downloadArtifactZip, listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
@@ -23,11 +31,12 @@ import type { RepoRef } from "../github/repo.js";
 import {
   classifyRuns,
   getRun,
+  listAttemptStarts,
   listRunsSince,
   missingPendingIds,
   type WorkflowRun,
 } from "../github/runs.js";
-import { acquireLock, LockError } from "../state/lock.js";
+import { acquireDataDirLock, acquireLock } from "../state/lock.js";
 import { loadState, repoState, type State, saveState } from "../state/state.js";
 import { type AppendResult, appendEvents } from "../store/ndjson.js";
 import { parseRepoFlags } from "./repo-flags.js";
@@ -43,6 +52,7 @@ interface SharedOptions {
   fullErrors: boolean;
   maxArtifactMb: number | undefined;
   maxRuns: number | undefined;
+  rerunLookbackHours: number;
   now: Date;
   palette: Palette;
 }
@@ -136,12 +146,17 @@ export const collectCommand = defineCommand({
       type: "string",
       description: "Process at most this many completed runs per repo; the rest resume next run",
     },
+    "rerun-lookback-hours": {
+      type: "string",
+      description: `Re-list runs this far back to catch re-runs of older runs; 0 disables (default ${DEFAULT_RERUN_LOOKBACK_HOURS})`,
+    },
   },
   async run({ args, rawArgs }) {
     const hoursBack = parseHoursBack(args["hours-back"]);
     const concurrency = parseConcurrency(args.concurrency);
     const maxArtifactMb = parseMaxArtifactMb(args["max-artifact-mb"]);
     const maxRuns = parsePositiveIntFlag(args["max-runs"], "--max-runs");
+    const rerunLookbackHours = parseRerunLookback(args["rerun-lookback-hours"]);
     const palette = createPalette(colorSupported);
 
     const config = args.config ? await loadConfig(args.config) : undefined;
@@ -164,17 +179,20 @@ export const collectCommand = defineCommand({
 
     // Single-writer guard (F5): overlapping collects on the same state file would race the
     // read-keys → append sequence into duplicates and clobber each other's watermarks.
-    let releaseLock: () => Promise<void>;
-    try {
-      releaseLock = await acquireLock(`${args["state-file"]}.lock`);
-    } catch (error) {
-      if (error instanceof LockError) {
-        console.error(palette.bad(error.message));
-        process.exitCode = 1;
-        return;
+    const releaseState = await acquireLock(`${args["state-file"]}.lock`);
+    let releaseData: () => Promise<void> = async () => {};
+    if (!args["dry-run"]) {
+      try {
+        releaseData = await acquireDataDirLock(args["data-dir"]);
+      } catch (error) {
+        await releaseState();
+        throw error;
       }
-      throw error;
     }
+    const releaseLock = async () => {
+      await releaseData();
+      await releaseState();
+    };
 
     // Ctrl-C / kill would skip the finally below (Node dies on the signal without unwinding),
     // stranding the lock until the stale-pid check breaks it next run. Release it eagerly and
@@ -196,6 +214,7 @@ export const collectCommand = defineCommand({
         fullErrors: args["full-errors"],
         maxArtifactMb,
         maxRuns,
+        rerunLookbackHours,
         now,
         palette,
       };
@@ -219,7 +238,9 @@ export const collectCommand = defineCommand({
           totals.failed++;
           process.exitCode = 1;
           console.error(
-            palette.bad(`  [${target.slug}] collect failed: ${(error as Error).message}`),
+            palette.bad(
+              `  [${target.slug}] collect failed: ${terminalSafe((error as Error).message)}`,
+            ),
           );
         }
       }
@@ -264,7 +285,22 @@ async function collectRepo(
     );
   }
 
-  const runs = await listRunsSince(octokit, ref, window.since);
+  const listed = await listRunsSince(
+    octokit,
+    ref,
+    listingStart(window.since, shared.now, shared.rerunLookbackHours, Boolean(previous.watermark)),
+    shared.now,
+  );
+  const collectedAttempts = initialCollectedAttempts(previous, listed, window.since);
+  const { runs, reruns } = selectRuns(
+    listed,
+    window.since,
+    collectedAttempts,
+    previous.pending_runs,
+  );
+  if (reruns > 0) {
+    console.log(p.dim(`  Found ${reruns} re-run(s) of older run(s) to collect.`));
+  }
 
   // Pending runs the window listing no longer surfaces (created before the window start) are
   // re-checked by id, so the watermark having passed them never loses their artifacts (D12).
@@ -315,6 +351,8 @@ async function collectRepo(
         onProgress: (done, total) => reportProgress(done, total, p),
         concurrency: target.concurrency,
         excludeArtifacts: target.excludeArtifacts,
+        collectedAttempt: (run) =>
+          alreadyCollectedAttempt(run, window.since, collectedAttempts, previous.pending_runs),
         ...(shared.maxArtifactMb !== undefined ? { maxArtifactMb: shared.maxArtifactMb } : {}),
       },
     );
@@ -346,6 +384,11 @@ async function collectRepo(
     state.repos[slug] = {
       watermark,
       pending_runs: pending.map((run) => run.run_id),
+      rerun_attempts: nextCollectedAttempts(
+        collectedAttempts,
+        [...listed, ...runs],
+        [...processed, ...excluded],
+      ),
       last_collected_at: shared.now.toISOString(),
     };
     await saveState(shared.stateFile, state);
@@ -387,6 +430,7 @@ function makeArtifactFetcher(octokit: GitHubClient["octokit"], ref: RepoRef): Ar
   return {
     list: (runId) => listRunArtifacts(octokit, ref, runId),
     download: (artifactId) => downloadArtifactZip(octokit, ref, artifactId),
+    attemptStarts: (run) => listAttemptStarts(octokit, ref, run),
   };
 }
 
@@ -423,6 +467,13 @@ function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean, p:
     const verb2 = dryRun ? "would sniff" : "sniffed";
     console.log(
       p.dim(`    ${verb2} ${summary.sniffedArtifacts} unnamed artifact(s) for reports (tier 3).`),
+    );
+  }
+  if (summary.collectedArtifacts > 0) {
+    console.log(
+      p.dim(
+        `    ${summary.collectedArtifacts} artifact(s) from already-collected attempts skipped (not downloaded).`,
+      ),
     );
   }
   if (summary.excludedArtifacts > 0) {
@@ -528,6 +579,18 @@ function parseHoursBack(value: string | undefined): number | undefined {
   const hours = Number(value);
   if (!Number.isFinite(hours) || hours <= 0) {
     throw new Error(`Invalid --hours-back "${value}": expected a positive number.`);
+  }
+  return hours;
+}
+
+/** Parses `--rerun-lookback-hours`: a non-negative number, defaulting when absent. */
+function parseRerunLookback(value: string | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_RERUN_LOOKBACK_HOURS;
+  }
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours < 0) {
+    throw new Error(`Invalid --rerun-lookback-hours "${value}": expected a non-negative number.`);
   }
   return hours;
 }

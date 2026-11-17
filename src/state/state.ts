@@ -1,4 +1,6 @@
-import { readFile, rename, writeFile } from "node:fs/promises";
+import { readFile, rename } from "node:fs/promises";
+import { dirname } from "node:path";
+import { syncDir, writeFileDurable } from "../store/durable.js";
 
 /** Current schema version for state.json (see D11). */
 export const STATE_SCHEMA_VERSION = 1;
@@ -9,6 +11,8 @@ export interface RepoState {
   watermark?: string;
   /** In-progress/queued run ids to re-check next collection; the watermark never passes these. */
   pending_runs: number[];
+  /** Highest attempt collected per recent re-run (run id → attempt). */
+  rerun_attempts?: Record<string, number>;
   /** ISO timestamp of the last successful collection for this repo. */
   last_collected_at?: string;
 }
@@ -23,9 +27,13 @@ export function emptyState(): State {
   return { schema_version: STATE_SCHEMA_VERSION, repos: {} };
 }
 
-/** Returns the repo's state, or an empty entry if this repo has never been collected. */
+/**
+ * Returns the repo's state, or an empty entry if it has never been collected; a missing
+ * `pending_runs` defaults to empty.
+ */
 export function repoState(state: State, repo: string): RepoState {
-  return state.repos[repo] ?? { pending_runs: [] };
+  const entry = state.repos[repo];
+  return entry ? { ...entry, pending_runs: entry.pending_runs ?? [] } : { pending_runs: [] };
 }
 
 /**
@@ -55,6 +63,7 @@ export async function loadState(path: string): Promise<State> {
  */
 export async function saveState(path: string, state: State): Promise<void> {
   const tmp = `${path}.tmp`;
-  await writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+  await writeFileDurable(tmp, `${JSON.stringify(state, null, 2)}\n`);
   await rename(tmp, path);
+  await syncDir(dirname(path));
 }

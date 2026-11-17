@@ -5,6 +5,12 @@ import { type UnzipFileInfo, unzipSync } from "fflate";
 /** Default ceiling (MB) on a single archive's *decompressed* size — a zip-bomb / OOM guard (F1). */
 export const DEFAULT_MAX_EXTRACT_MB = 500;
 
+/** Declared uncompressed bytes extracted so far, shared across nested archives, and the ceiling. */
+interface ExtractionBudget {
+  used: number;
+  max: number;
+}
+
 /** Thrown when an archive's declared uncompressed size exceeds the extraction budget. */
 export class ArchiveTooLargeError extends Error {
   override name = "ArchiveTooLargeError";
@@ -17,12 +23,20 @@ export class ArchiveTooLargeError extends Error {
  * capped at `maxBytes` and checked *before* each entry is inflated, so a zip bomb is rejected
  * (with {@link ArchiveTooLargeError}) rather than exhausting memory (F1).
  */
-export async function extractZip(
+export function extractZip(
   zip: Uint8Array,
   destDir: string,
   maxBytes = DEFAULT_MAX_EXTRACT_MB * 1024 * 1024,
 ): Promise<string[]> {
-  const entries = unzipSync(zip, { filter: budgetFilter(maxBytes) });
+  return extractWithBudget(zip, destDir, { used: 0, max: maxBytes });
+}
+
+async function extractWithBudget(
+  zip: Uint8Array,
+  destDir: string,
+  budget: ExtractionBudget,
+): Promise<string[]> {
+  const entries = unzipSync(zip, { filter: budgetFilter(budget) });
   const written: string[] = [];
 
   for (const [name, bytes] of Object.entries(entries)) {
@@ -47,13 +61,22 @@ export async function extractZip(
  * needed to surface the report. A nested entry that fails to unzip is kept as-is; a nested
  * entry that blows the extraction budget rethrows, since the whole artifact is hostile.
  */
-export async function extractZipNested(
+export function extractZipNested(
   zip: Uint8Array,
   destDir: string,
   maxDepth = 2,
   maxBytes = DEFAULT_MAX_EXTRACT_MB * 1024 * 1024,
 ): Promise<string[]> {
-  const written = await extractZip(zip, destDir, maxBytes);
+  return extractNested(zip, destDir, maxDepth, { used: 0, max: maxBytes });
+}
+
+async function extractNested(
+  zip: Uint8Array,
+  destDir: string,
+  maxDepth: number,
+  budget: ExtractionBudget,
+): Promise<string[]> {
+  const written = await extractWithBudget(zip, destDir, budget);
   if (maxDepth <= 1) {
     return written;
   }
@@ -67,12 +90,7 @@ export async function extractZipNested(
     try {
       const bytes = await readFile(file);
       leaves.push(
-        ...(await extractZipNested(
-          new Uint8Array(bytes),
-          `${file}.extracted`,
-          maxDepth - 1,
-          maxBytes,
-        )),
+        ...(await extractNested(new Uint8Array(bytes), `${file}.extracted`, maxDepth - 1, budget)),
       );
     } catch (error) {
       if (error instanceof ArchiveTooLargeError) {
@@ -87,17 +105,16 @@ export async function extractZipNested(
 
 /**
  * A fflate entry filter that accumulates each entry's *declared* uncompressed size and throws
- * once the sum exceeds `maxBytes` — before the offending entry is inflated, so a zip bomb never
- * allocates its payload. (A crafted header could understate its size; the declared size catches
- * every realistic bomb and all accidental-OOM cases.)
+ * once the shared total exceeds `budget.max` — before the offending entry is inflated, so a zip
+ * bomb never allocates its payload. (A crafted header could understate its size; the declared
+ * size catches every realistic bomb and all accidental-OOM cases.)
  */
-function budgetFilter(maxBytes: number): (file: UnzipFileInfo) => boolean {
-  let total = 0;
+function budgetFilter(budget: ExtractionBudget): (file: UnzipFileInfo) => boolean {
   return (file) => {
-    total += file.originalSize;
-    if (total > maxBytes) {
+    budget.used += file.originalSize;
+    if (budget.used > budget.max) {
       throw new ArchiveTooLargeError(
-        `Archive expands past the ${Math.round(maxBytes / (1024 * 1024))} MB extraction budget; refusing to inflate.`,
+        `Archive expands past the ${Math.round(budget.max / (1024 * 1024))} MB extraction budget; refusing to inflate.`,
       );
     }
     return true;

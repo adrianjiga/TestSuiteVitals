@@ -33,6 +33,19 @@ const ranked = rankTests([
 ]);
 
 describe("renderReport", () => {
+  it("neutralizes terminal escapes smuggled in through a test title", () => {
+    const hostile = rankTests([
+      agg("t", {
+        title_path: ["A", "\u001b[2J\u001b[Hall tests passed"],
+        passed: 5,
+        distinctShas: 5,
+      }),
+    ]);
+    const out = renderReport(hostile, { slug: "o/r", totalTests: 1 }, { limit: 20, all: false });
+    expect(out).not.toContain("\u001b");
+    expect(out).toContain("\uFFFD[2J\uFFFD[Hall tests passed");
+  });
+
   it("shows a header, ranked rows in score order, and a hidden-count footer", () => {
     const out = renderReport(ranked, { slug: "o/r", totalTests: 3 }, { limit: 20, all: false });
     expect(out).toContain("Flaky tests · o/r · 3 tests");

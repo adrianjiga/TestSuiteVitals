@@ -137,7 +137,7 @@ function indexResult(
   params: Record<string, unknown> | undefined,
   results: Map<string, RawAttempt[]>,
 ): void {
-  const test = params?.test as { testId?: string } | undefined;
+  const test = params?.test as { testId?: string; expectedStatus?: string } | undefined;
   const result = params?.result as
     | { status?: string; duration?: number; retry?: number; errors?: PwError[] }
     | undefined;
@@ -146,7 +146,7 @@ function indexResult(
   }
   const attempt: RawAttempt = {
     retry: result.retry ?? 0,
-    status: mapStatus(result.status),
+    status: mapStatus(result.status, test.expectedStatus),
     duration_ms: result.duration ?? 0,
     errors: result.errors ?? [],
   };
@@ -183,14 +183,15 @@ function toError(errors: PwError[], options: RedactOptions) {
   return makeTestError({ message, stack }, options);
 }
 
-function mapStatus(status: string | undefined): TestStatus {
-  if (status === "passed") {
-    return "passed";
-  }
-  if (status === "skipped") {
+/**
+ * Playwright judges a result against the test's `expectedStatus`, not in absolute terms: a
+ * `test.fail()` test that fails is passing, and one that unexpectedly passes is a failure.
+ */
+function mapStatus(status: string | undefined, expectedStatus = "passed"): TestStatus {
+  if (status === "skipped" || expectedStatus === "skipped") {
     return "skipped";
   }
-  return "failed";
+  return status === expectedStatus ? "passed" : "failed";
 }
 
 function stripAnsi(text: string): string {

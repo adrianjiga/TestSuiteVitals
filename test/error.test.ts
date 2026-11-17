@@ -8,6 +8,45 @@ import {
 } from "../src/events/error.js";
 
 describe("redactSecrets", () => {
+  it("redacts quoted values whole, including JSON keys", () => {
+    expect(redactSecrets('password: "hunter 2 foo" rest')).toBe("password: [REDACTED] rest");
+    expect(redactSecrets(`{"password":"a b c","user":"x"}`)).toBe(
+      `{"password":[REDACTED],"user":"x"}`,
+    );
+    expect(redactSecrets("api_key = 'k e y'")).toBe("api_key = [REDACTED]");
+  });
+
+  it("never leaks the tail of a value with an escaped quote or a glued suffix", () => {
+    const json = redactSecrets('{"password":"ab\\"cd ef", "user":"x"}');
+    expect(json).not.toContain("cd ef");
+    expect(json).toContain('"user":"x"');
+    expect(redactSecrets('password="abc"def ghi')).toBe("password=[REDACTED] ghi");
+    expect(redactSecrets("--token 'a\\'b c' next")).toBe("--token [REDACTED] next");
+  });
+
+  it("redacts a secret passed as the next CLI argument", () => {
+    expect(redactSecrets("ran: mysql --password hunter2 --host db")).toBe(
+      "ran: mysql --password [REDACTED] --host db",
+    );
+    expect(redactSecrets("deploy --access-token abc123")).toBe("deploy --access-token [REDACTED]");
+    expect(redactSecrets("cmd -token abc")).toBe("cmd -token [REDACTED]");
+  });
+
+  it("leaves hyphenated words that merely end in a secret key name alone", () => {
+    expect(redactSecrets("Invalid client-secret provided")).toBe("Invalid client-secret provided");
+    expect(redactSecrets("missing auth-token header")).toBe("missing auth-token header");
+  });
+
+  it("redacts more key names, such as client secrets and Azure account keys", () => {
+    expect(redactSecrets("client_secret=s3cr3t")).toBe("client_secret=[REDACTED]");
+    expect(redactSecrets("AccountKey=abc123==;EndpointSuffix=core")).toBe("AccountKey=[REDACTED]");
+  });
+
+  it("redacts Stripe and Google API keys", () => {
+    expect(redactSecrets(`key sk_live_${"a".repeat(24)} used`)).toBe("key [REDACTED] used");
+    expect(redactSecrets(`maps AIza${"b".repeat(35)} call`)).toBe("maps [REDACTED] call");
+  });
+
   it("redacts GitHub tokens", () => {
     expect(redactSecrets(`token ghp_${"a".repeat(36)} leaked`)).toBe("token [REDACTED] leaked");
   });

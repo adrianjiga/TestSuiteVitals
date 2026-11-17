@@ -37,7 +37,6 @@ Study the three existing adapters before writing — match their structure exact
   flat formats (one attempt) it is always `false`.
 - **ESM/NodeNext:** every relative import uses a `.js` specifier even from `.ts`
   (`import { makeTestError } from "../events/error.js"`).
-- **No Node-24-only runtime APIs** — local dev runs on Node 22 via tsx/vitest.
 - Biome owns style (double quotes, 2-space, 100-col). Do not hand-format; run the check.
 
 ## Your deliverables (all of them, every time)

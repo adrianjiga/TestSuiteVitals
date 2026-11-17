@@ -24,8 +24,23 @@ const XML_OPTIONS = {
   textNodeName: "#text",
   parseTagValue: false,
   trimValues: true,
-  isArray: (name: string) => ["testsuite", "testcase", "failure", "error"].includes(name),
+  isArray: (name: string) =>
+    [
+      "testsuite",
+      "testcase",
+      "failure",
+      "error",
+      "flakyFailure",
+      "flakyError",
+      "rerunFailure",
+      "rerunError",
+    ].includes(name),
 };
+
+/** Surefire's records of failed runs before a retry passed. */
+const FLAKY_TAGS = ["flakyFailure", "flakyError"] as const;
+/** Surefire's records of retries after the first failure, when every retry also failed. */
+const RERUN_TAGS = ["rerunFailure", "rerunError"] as const;
 
 const parser = new XMLParser(XML_OPTIONS);
 
@@ -45,8 +60,8 @@ interface XmlNode {
 }
 
 /**
- * Parses a JUnit XML report into framework-agnostic tests. JUnit is flat — each test
- * yields a single attempt; the richer `attempts[]` comes from Playwright/Mochawesome.
+ * Parses a JUnit XML report into framework-agnostic tests. A test yields one attempt, unless
+ * Surefire's `rerunFailingTestsCount` retried it: then each recorded retry becomes an attempt.
  */
 export function parseJUnit(xml: string, options: RedactOptions = {}): ParsedTest[] {
   const activeParser = HAS_DOCTYPE.test(xml) ? noEntitiesParser : parser;
@@ -54,24 +69,33 @@ export function parseJUnit(xml: string, options: RedactOptions = {}): ParsedTest
   const suites = collectSuites(root);
   const tests: ParsedTest[] = [];
 
-  for (const suite of suites) {
-    const suiteFile = str(suite["@_file"]);
+  for (const { suite, file } of suites) {
     const suiteName = str(suite["@_name"]);
     for (const testcase of asArray(suite.testcase)) {
-      tests.push(parseTestcase(testcase, suiteFile, suiteName, options));
+      tests.push(parseTestcase(testcase, file, suiteName, options));
     }
   }
 
   return tests;
 }
 
-/** Gathers `<testsuite>` nodes whether the root is `<testsuites>` or a lone `<testsuite>`. */
-function collectSuites(root: XmlNode): XmlNode[] {
-  const container = root.testsuites as XmlNode | undefined;
-  if (container) {
-    return asArray(container.testsuite);
+/**
+ * Gathers every `<testsuite>` at any depth, under a `<testsuites>` root or a lone `<testsuite>`.
+ * An inner suite without its own `file` inherits the enclosing suite's.
+ */
+function collectSuites(
+  node: XmlNode,
+  inheritedFile?: string,
+): Array<{ suite: XmlNode; file: string | undefined }> {
+  const found: Array<{ suite: XmlNode; file: string | undefined }> = [];
+  for (const container of asArray(node.testsuites)) {
+    found.push(...collectSuites(container, inheritedFile));
   }
-  return asArray(root.testsuite);
+  for (const suite of asArray(node.testsuite)) {
+    const file = str(suite["@_file"]) ?? inheritedFile;
+    found.push({ suite, file }, ...collectSuites(suite, file));
+  }
+  return found;
 }
 
 function parseTestcase(
@@ -102,11 +126,12 @@ function parseTestcase(
   const durationMs = Math.round((Number(tc["@_time"]) || 0) * 1000);
 
   const status = testcaseStatus(tc);
-  const attempt: TestAttempt = { n: 1, status, duration_ms: durationMs };
+  const attempts = retryAttempts(tc, status, options);
+  const final: TestAttempt = { n: attempts.length + 1, status, duration_ms: durationMs };
   if (status === "failed") {
-    const error = testcaseError(tc, options);
+    const error = errorFrom(asArray(tc.failure)[0] ?? asArray(tc.error)[0], options);
     if (error) {
-      attempt.error = error;
+      final.error = error;
     }
   }
 
@@ -114,24 +139,52 @@ function parseTestcase(
     file,
     title_path: titlePath,
     status,
-    flaky: false,
+    flaky: status === "passed" && attempts.length > 0,
     duration_ms: durationMs,
-    attempts: [attempt],
+    attempts: status === "failed" ? failedThenReruns(final, tc, options) : [...attempts, final],
   };
+}
+
+/** Failed runs that preceded a passing retry (`<flakyFailure>`/`<flakyError>`). */
+function retryAttempts(tc: XmlNode, status: TestStatus, options: RedactOptions): TestAttempt[] {
+  if (status !== "passed") {
+    return [];
+  }
+  return FLAKY_TAGS.flatMap((tag) => asArray(tc[tag])).map((node, i) =>
+    failedAttempt(i + 1, node, options),
+  );
+}
+
+/**
+ * A test that failed every retry: the `<failure>`/`<error>` is the first run, and each
+ * `<rerunFailure>`/`<rerunError>` is a retry after it.
+ */
+function failedThenReruns(first: TestAttempt, tc: XmlNode, options: RedactOptions): TestAttempt[] {
+  const reruns = RERUN_TAGS.flatMap((tag) => asArray(tc[tag]));
+  return [{ ...first, n: 1 }, ...reruns.map((node, i) => failedAttempt(i + 2, node, options))];
+}
+
+function failedAttempt(n: number, node: XmlNode, options: RedactOptions): TestAttempt {
+  const attempt: TestAttempt = { n, status: "failed", duration_ms: 0 };
+  const error = errorFrom(node, options);
+  if (error) {
+    attempt.error = error;
+  }
+  return attempt;
 }
 
 function testcaseStatus(tc: XmlNode): TestStatus {
   if ("skipped" in tc) {
     return "skipped";
   }
-  if (asArray(tc.failure).length > 0 || asArray(tc.error).length > 0) {
+  const failures = [tc.failure, tc.error, ...RERUN_TAGS.map((tag) => tc[tag])];
+  if (failures.some((value) => asArray(value).length > 0)) {
     return "failed";
   }
   return "passed";
 }
 
-function testcaseError(tc: XmlNode, options: RedactOptions) {
-  const node = asArray(tc.failure)[0] ?? asArray(tc.error)[0];
+function errorFrom(node: XmlNode | undefined, options: RedactOptions) {
   if (node === undefined) {
     return undefined;
   }

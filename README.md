@@ -7,30 +7,33 @@ you already upload and tells you which tests are flaky, how badly, and where.
 No server, no instrumentation changes — point it at a GitHub repo, and it
 normalizes the test-report artifacts into plain files you own.
 
-> **Status:** v1 feature-complete (M1–M5: collect, report, dashboard, compact, prune, doctor). Not yet published to npm.
+## Install
+
+Requires Node.js 24 or newer.
+
+```bash
+npx suitevitals --help          # run without installing
+npm install -g suitevitals      # or install the `suitevitals` command globally
+```
+
+## Quick start
+
+```bash
+suitevitals doctor --repo <owner/name>    # check the repo uploads parseable test reports
+suitevitals collect --repo <owner/name>   # ingest the last 72h of CI artifacts into ./data
+suitevitals report --repo <owner/name>    # rank tests by flakiness
+suitevitals dashboard --repo <owner/name> # write a self-contained HTML dashboard
+```
+
+`collect` writes `state.json` and `data/` in the current directory (override with `--state-file`
+and `--data-dir`); run the other commands from the same place, or pass the same `--data-dir`.
+Re-running `collect` is safe and picks up where it left off.
 
 ## Documentation
 
 Architecture and design rationale live in [`docs/architecture/`](docs/architecture/overview.md):
 the [locked decisions](docs/architecture/decisions.md), the [event schema](docs/architecture/event-schema.md),
 and the [collector pipeline](docs/architecture/collector.md).
-
-## Requirements
-
-- Node.js >= 24
-
-## Development
-
-```bash
-npm install
-npm run dev -- collect --help   # run the CLI from source
-npm test                        # run the test suite
-npm run typecheck               # type-check without emitting
-npm run check                   # Biome: lint + format + autofix
-npm run lint                    # Biome: lint only
-npm run format                  # Biome: format only
-npm run build                   # compile to dist/
-```
 
 ## Authentication
 
@@ -42,6 +45,10 @@ token in this order:
 3. `gh auth token` (the GitHub CLI, if installed and authenticated)
 
 If none yields a token, it exits with a message listing all three options.
+
+The token needs read access only: for a fine-grained token, **Actions: read** and **Contents:
+read** on the repositories you collect (Contents is used by `doctor`); for a classic token, the
+`repo` scope for private repositories or no scope for public ones.
 
 ## Usage
 
@@ -56,13 +63,14 @@ suitevitals collect --config repos.json                 # repos from a config fi
 | `--repo <owner/name>` | Repository to collect from; repeat the flag for multiple repos. |
 | `--config <path>` | JSON file listing repos and per-repo overrides (see below). |
 | `--token <token>` | GitHub token; overrides `GITHUB_TOKEN` and the `gh` CLI. |
-| `--hours-back <n>` | Backfill window in hours; overrides the stored watermark. |
+| `--hours-back <n>` | Backfill window in hours; widens past the stored watermark, never narrows it. To skip a long gap on purpose, delete the repo's entry from the state file first. |
 | `--state-file <path>` | Path to the state file (default `state.json`). |
 | `--data-dir <path>` | Directory for the NDJSON event partitions (default `data`). |
 | `--concurrency <n>` | Number of runs to fetch in parallel (default 5). |
 | `--workflow <glob>` | Only collect runs of workflows matching this glob (`*` wildcard; default all). |
 | `--exclude-trigger <list>` | Skip runs fired by these events (comma-separated, e.g. `pull_request`). |
 | `--max-runs <n>` | Process at most this many completed runs per repo; the rest resume next run. |
+| `--rerun-lookback-hours <n>` | Re-list runs this far back to catch re-runs of older runs; `0` disables (default 48). |
 | `--exclude-artifact <list>` | Skip artifacts whose name matches these globs (comma-separated). Dropped before download. |
 | `--matrix-from-artifact <regex>` | Regex with named groups read from each artifact name; the group names become the matrix dimensions. |
 | `--max-artifact-mb <n>` | Size cap when sniffing unnamed artifacts for reports (default 100). |
@@ -74,15 +82,18 @@ run for a repo, collection defaults to the last 72 hours; afterwards it resumes 
 stored watermark. Re-running is always safe — overlapping windows are de-duplicated.
 
 Collection is guarded against the usual hazards: a `<state-file>.lock` file rejects a second
-`collect` on the same state file (a stale lock whose recorded pid is gone is broken
+`collect` on the same state file, and a `<data-dir>/.lock` keeps `compact`/`prune` from running
+alongside a `collect` on the same data (a stale lock whose recorded pid is gone is broken
 automatically, and Ctrl-C releases the lock on the way out); an artifact that would decompress
 past a 500 MB budget is skipped and reported instead of exhausting memory — a report artifact
 already bigger than that budget is skipped before it is even downloaded; a corrupt archive or an
-unparseable report file costs that one artifact or file, with a warning, never the run; in a
+unparseable report file costs that one artifact or file, with a warning, never the run; control
+characters in test titles and artifact names are neutralized before they reach your terminal; in a
 multi-repo invocation a failing repo is reported and the rest still collect; and a corrupt line
 in a partition is skipped with a warning rather than failing the run. Error messages are
-redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, OpenAI-style),
-`user:pass@` URL credentials, JWTs, PEM private-key blocks, and query-string values — and
+redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, OpenAI-style, Stripe,
+Google API), `user:pass@` URL credentials, JWTs, PEM private-key blocks, query-string values, and
+values of secret-named keys and flags (`password: "…"`, `--token …`) — and
 truncated to a budget that holds even for single-line dumps; `--full-errors` bypasses both.
 
 ### Matrix cells from artifact names
@@ -181,7 +192,7 @@ suitevitals report --repo <owner/name> [options]
 | `--data-dir <path>` | Directory holding the NDJSON partitions (default `data`). |
 | `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
 | `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |
-| `--since <Nd\|ISO>` | Only include runs in the window (e.g. `30d`, `12h`, or a timestamp). |
+| `--since <Nd\|ISO>` | Only include runs in the window: a span (`30d`, `12h`) or an ISO date/timestamp (`2026-06-01`). |
 | `--branch <name>` | Only include runs on this branch (exact match, e.g. `main`). |
 | `--workflow <glob>` | Only include runs of workflows matching this glob (`*` wildcard). |
 | `--limit <n>` | Show at most this many ranked tests (default 20). |
@@ -273,15 +284,37 @@ Java/JUnit) — including monorepos: one tree listing finds `package.json` files
 subdirectories and Java build files at any depth — and either confirms collection will work or
 hands you copy-pasteable YAML to make it work. This is the zero-to-collecting onboarding path.
 
-> **Status (v1 feature-complete, M1–M5):** `collect` ingests **JUnit**, **Playwright blob**, and
+### Errors
+
+A failing command prints a one-line `Error: …` and exits with status 1 — including `report` or
+`dashboard` on a repo with no collected events (the message shows the directory it looked in;
+`--data-dir` defaults to `./data`, relative to where you run it). Filters that match nothing are
+not an error: `report --json` prints `[]`. Set
+`SUITEVITALS_DEBUG=1` to print the full stack trace instead, e.g. when reporting a bug.
+
+> **In short:** `collect` ingests **JUnit**, **Playwright blob**, and
 > **mochawesome** reports from one or more repos (repeatable `--repo` or a `--config` file) into
 > dedup'd monthly NDJSON partitions, in parallel with rate-limit backoff, with workflow/trigger
-> filters and a `--max-runs` cap, and falls back to sniffing unnamed artifacts (under
-> `--max-artifact-mb`) when a run has no name match. `report` streams those partitions back,
+> filters and a `--max-runs` cap, picks up re-runs of recent runs, and falls back to sniffing
+> unnamed artifacts (under `--max-artifact-mb`) when a run has no name match. `report` streams
+> those partitions back,
 > aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON),
 > filterable by `--since`/`--branch`/`--workflow`; `dashboard` renders the same ranking as a
 > self-contained HTML monitor; `compact` zstd-compresses closed months; `prune` applies a
 > retention window; `doctor` diagnoses a repo's report setup, monorepos included.
+
+## Development
+
+```bash
+npm install
+npm run dev -- collect --help   # run the CLI from source
+npm test                        # run the test suite
+npm run typecheck               # type-check without emitting
+npm run check                   # Biome: lint + format + autofix
+npm run lint                    # Biome: lint only
+npm run format                  # Biome: format only
+npm run build                   # clean dist/ and compile to it
+```
 
 ## License
 

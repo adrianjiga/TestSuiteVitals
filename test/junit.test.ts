@@ -118,4 +118,59 @@ describe("parseJUnit", () => {
     const [test] = parseJUnit(xml);
     expect(test?.title_path).toEqual(["&x;&x;&x;"]);
   });
+
+  it("records a Surefire pass-after-retry as flaky, one attempt per failed run", () => {
+    const xml = `<testsuite name="s"><testcase classname="LoginTest" name="logs in" time="2.5">
+      <flakyFailure message="timeout" type="TimeoutException">at LoginTest.java:10</flakyFailure>
+      <flakyError message="stale element">at LoginTest.java:12</flakyError>
+    </testcase></testsuite>`;
+    const [test] = parseJUnit(xml);
+    expect(test?.status).toBe("passed");
+    expect(test?.flaky).toBe(true);
+    expect(test?.attempts.map((a) => [a.n, a.status])).toEqual([
+      [1, "failed"],
+      [2, "failed"],
+      [3, "passed"],
+    ]);
+    expect(test?.attempts[0]?.error?.message).toBe("timeout");
+    expect(test?.attempts[2]?.duration_ms).toBe(2500);
+  });
+
+  it("records a test that failed every Surefire retry as failed with each rerun", () => {
+    const xml = `<testsuite name="s"><testcase classname="LoginTest" name="logs in" time="1">
+      <failure message="first">at LoginTest.java:10</failure>
+      <rerunFailure message="second">at LoginTest.java:10</rerunFailure>
+    </testcase></testsuite>`;
+    const [test] = parseJUnit(xml);
+    expect(test?.status).toBe("failed");
+    expect(test?.flaky).toBe(false);
+    expect(test?.attempts.map((a) => [a.n, a.status, a.error?.message])).toEqual([
+      [1, "failed", "first"],
+      [2, "failed", "second"],
+    ]);
+  });
+
+  it("treats a lone rerunFailure as a failure rather than a pass", () => {
+    const xml = `<testsuite name="s"><testcase classname="C" name="t" time="1">
+      <rerunFailure message="retry broke"/>
+    </testcase></testsuite>`;
+    expect(parseJUnit(xml)[0]?.status).toBe("failed");
+  });
+
+  it("collects testcases from suites nested at any depth", () => {
+    const xml = `<testsuites><testsuite name="outer" file="outer.ts">
+      <testcase classname="A" name="top"/>
+      <testsuite name="inner">
+        <testcase classname="B" name="nested"/>
+        <testsuite name="deepest" file="deep.ts"><testcase classname="C" name="deep"/></testsuite>
+      </testsuite>
+    </testsuite><testsuites><testsuite name="grouped"><testcase classname="D" name="grouped"/></testsuite></testsuites></testsuites>`;
+    const tests = parseJUnit(xml);
+    expect(tests.map((t) => [t.title_path.at(-1), t.file])).toEqual([
+      ["grouped", "D"],
+      ["top", "outer.ts"],
+      ["nested", "outer.ts"],
+      ["deep", "deep.ts"],
+    ]);
+  });
 });

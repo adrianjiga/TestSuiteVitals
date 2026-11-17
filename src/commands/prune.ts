@@ -1,6 +1,8 @@
+import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
+import { withDataDirLock } from "../state/lock.js";
 import { listRepoSlugs } from "../store/compact.js";
 import { pruneCutoff, pruneRepo } from "../store/prune.js";
 
@@ -40,28 +42,30 @@ export const pruneCommand = defineCommand({
 
     const slugs = args.repo ? [repoSlug(parseRepoRef(args.repo))] : await listRepoSlugs(dataDir);
     if (slugs.length === 0) {
-      console.log(palette.dim("No collected repositories to prune."));
+      console.log(palette.dim(`No collected repositories to prune in ${resolve(dataDir)}.`));
       return;
     }
 
-    const verb = args["dry-run"] ? "Would delete" : "Deleted";
-    let files = 0;
-    let bytes = 0;
-    for (const slug of slugs) {
-      for (const pruned of await pruneRepo(dataDir, slug, cutoff, args["dry-run"])) {
-        files++;
-        bytes += pruned.bytes;
-        console.log(
-          `  ${palette.repo(slug)} ${pruned.month}: ${verb} ${pruned.file} (${formatBytes(pruned.bytes)}).`,
-        );
+    await withDataDirLock(dataDir, async () => {
+      const verb = args["dry-run"] ? "Would delete" : "Deleted";
+      let files = 0;
+      let bytes = 0;
+      for (const slug of slugs) {
+        for (const pruned of await pruneRepo(dataDir, slug, cutoff, args["dry-run"])) {
+          files++;
+          bytes += pruned.bytes;
+          console.log(
+            `  ${palette.repo(slug)} ${pruned.month}: ${verb} ${pruned.file} (${formatBytes(pruned.bytes)}).`,
+          );
+        }
       }
-    }
 
-    if (files === 0) {
-      console.log(palette.dim(`Nothing to prune — no partitions older than ${cutoff}.`));
-      return;
-    }
-    printTotal(verb, files, bytes, cutoff, palette);
+      if (files === 0) {
+        console.log(palette.dim(`Nothing to prune — no partitions older than ${cutoff}.`));
+        return;
+      }
+      printTotal(verb, files, bytes, cutoff, palette);
+    });
   },
 });
 

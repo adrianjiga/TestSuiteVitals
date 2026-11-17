@@ -1,4 +1,4 @@
-import { type Palette, plainPalette } from "../colors.js";
+import { type Palette, plainPalette, terminalSafe } from "../colors.js";
 import type { RankedTests, ScoredTest } from "./rank.js";
 
 export interface ReportMeta {
@@ -85,9 +85,9 @@ function label(test: ScoredTest): string {
     const cell = Object.entries(matrix)
       .map(([k, v]) => `${k}=${v}`)
       .join(",");
-    return `${path} [${cell}]`;
+    return terminalSafe(`${path} [${cell}]`);
   }
-  return path;
+  return terminalSafe(path);
 }
 
 function truncate(value: string, width: number): string {

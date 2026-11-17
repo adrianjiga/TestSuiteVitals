@@ -4,7 +4,7 @@ import { colorSupported, createPalette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
 import { Aggregator } from "../report/aggregate.js";
 import { parseSince, rankTests } from "../report/rank.js";
-import { readRepoEvents } from "../report/read.js";
+import { noEventsError, readRepoEvents } from "../report/read.js";
 import { type ReportMeta, renderReport, renderReportJson } from "../report/render.js";
 import { DEFAULT_MIN_RUNS } from "../report/score.js";
 import { parseRepoFlags } from "./repo-flags.js";
@@ -80,7 +80,9 @@ export const reportCommand = defineCommand({
     const since = parseSince(args.since);
 
     const aggregator = new Aggregator({ byMatrix: args["by-matrix"] });
+    let stored = 0;
     for await (const event of readRepoEvents(args["data-dir"], slug)) {
+      stored++;
       if (since && new Date(event.run.started_at) < since) {
         continue;
       }
@@ -94,11 +96,15 @@ export const reportCommand = defineCommand({
     }
     const aggregates = aggregator.results();
 
+    if (stored === 0) {
+      throw noEventsError(args["data-dir"], slug);
+    }
     const filterLabel = describeFilters(args.since, args.branch, args.workflow);
     if (aggregates.length === 0) {
       console.log(
-        `No events for ${slug}. Run \`suitevitals collect --repo ${slug}\` first` +
-          (filterLabel ? ", or loosen --since/--branch/--workflow." : "."),
+        args.json
+          ? "[]"
+          : `No events for ${slug} match ${filterLabel}; loosen --since/--branch/--workflow.`,
       );
       return;
     }

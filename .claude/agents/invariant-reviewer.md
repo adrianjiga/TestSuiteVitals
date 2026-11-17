@@ -55,7 +55,6 @@ files and their immediate neighbours for context. Ground every finding in
 
 **Language/runtime conventions**
 - Every relative import uses a `.js` specifier (NodeNext), even from `.ts`.
-- No Node-24-only runtime APIs (local dev runs on Node 22 via tsx/vitest).
 - Long-running operations must show live progress, never go silent.
 - GitHub Actions in workflows are SHA-pinned with a `# vX.Y.Z` comment.
 

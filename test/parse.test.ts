@@ -8,7 +8,11 @@ import { parseRunReports } from "../src/collect/parse.js";
 import type { WorkflowRun } from "../src/github/runs.js";
 
 /** An extracted file tagged with the artifact it came from. */
-const file = (path: string, artifact: string): ExtractedFile => ({ path, artifact });
+const file = (path: string, artifact: string, attempt = 1): ExtractedFile => ({
+  path,
+  artifact,
+  attempt,
+});
 
 const run: WorkflowRun = {
   run_id: 7,
@@ -72,6 +76,30 @@ describe("parseRunReports", () => {
     expect(new Set(events.map((e) => e.matrix?.browser))).toEqual(new Set(["chrome", "firefox"]));
     // Identity is unchanged by the cell (D5) — both cells report the same tests.
     expect(new Set(events.map((e) => e.id)).size).toBe(2);
+  });
+
+  it("stamps each event with its file's attempt, not the run's latest attempt", async () => {
+    const carried = join(dir, "carried.xml");
+    const rerun = join(dir, "rerun.xml");
+    await writeFile(carried, JUNIT);
+    await writeFile(rerun, JUNIT);
+
+    const { events } = await parseRunReports(
+      [
+        {
+          run: { ...run, run_attempt: 2 },
+          files: [file(carried, "api-results", 1), file(rerun, "ui-results", 2)],
+        },
+      ],
+      "owner/name",
+    );
+
+    expect(
+      events.filter((e) => e.matrix?.artifact === "api-results").map((e) => e.run.run_attempt),
+    ).toEqual([1, 1]);
+    expect(
+      events.filter((e) => e.matrix?.artifact === "ui-results").map((e) => e.run.run_attempt),
+    ).toEqual([2, 2]);
   });
 
   it("tags events with the opaque artifact name when no pattern is given", async () => {
