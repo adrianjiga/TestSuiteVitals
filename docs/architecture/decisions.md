@@ -38,6 +38,9 @@ collected data.
 runner's workspace root (`/home/runner/work/<repo>/<repo>/`, `D:\a\<repo>\<repo>\`, macOS
 equivalent) is stripped, so emitters that write absolute or OS-native paths still give a test one
 id across runner OSes. Mochawesome's relative `file` is preferred over Mocha's absolute `fullFile`.
+Relative paths and class names are unchanged by this, so their ids are too; only data collected
+earlier from an absolute- or backslash-path emitter keeps its old ids, and re-collecting an
+overlapping window would add those tests again under the new ones.
 
 **Corollary — `file` must be a location, never a run label.** Identity is only stable if both
 inputs are. Adapters therefore resolve `file` from the most location-like attribute available
