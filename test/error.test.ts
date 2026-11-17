@@ -16,6 +16,14 @@ describe("redactSecrets", () => {
     expect(redactSecrets("api_key = 'k e y'")).toBe("api_key = [REDACTED]");
   });
 
+  it("never leaks the tail of a value with an escaped quote or a glued suffix", () => {
+    const json = redactSecrets('{"password":"ab\\"cd ef", "user":"x"}');
+    expect(json).not.toContain("cd ef");
+    expect(json).toContain('"user":"x"');
+    expect(redactSecrets('password="abc"def ghi')).toBe("password=[REDACTED] ghi");
+    expect(redactSecrets("--token 'a\\'b c' next")).toBe("--token [REDACTED] next");
+  });
+
   it("redacts a secret passed as the next CLI argument", () => {
     expect(redactSecrets("ran: mysql --password hunter2 --host db")).toBe(
       "ran: mysql --password [REDACTED] --host db",

@@ -15,8 +15,15 @@ export interface RedactOptions {
 const SECRET_KEYS =
   "password|passwd|passphrase|pwd|secret|client[_-]?secret|token|access[_-]?token|auth[_-]?token|api[_-]?key|access[_-]?key|private[_-]?key|account[_-]?key";
 
-/** A secret value: a quoted string (spaces and all), else everything up to whitespace. */
-const SECRET_VALUE = `("[^"]*"|'[^']*'|\\S+)`;
+/** Text glued to a closing quote, up to the delimiter that ends a JSON/CLI/connection field. */
+const GLUED = "[^\\s,;})\\]]*";
+
+/**
+ * A secret value: a quoted string (spaces and backslash-escaped quotes included, plus anything
+ * glued to its closing quote up to a field delimiter), else everything up to whitespace.
+ * Stopping at an escaped quote would leave the rest of a value like `"ab\\"cd ef"` stored.
+ */
+const SECRET_VALUE = `("(?:[^"\\\\]|\\\\.)*"${GLUED}|'(?:[^'\\\\]|\\\\.)*'${GLUED}|\\S+)`;
 
 /** Patterns for secrets that must never be stored (D6). */
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
