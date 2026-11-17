@@ -23,7 +23,8 @@ hand-format.
 
 ## Environment
 
-- **Node floor is 24** (`engines`), but local dev commonly runs on Node 22. `npm install` prints an
+- **Node floor is 24** (`engines`), but local dev commonly runs on Node 22 (**22.15 or newer**, for
+  the built-in `node:zlib` zstd that `compact` and `.zst` reads use). `npm install` prints an
   EBADENGINE warning — that is expected. Everything dev-facing goes through `tsx`/`vitest`, which run
   on 22, so **do not use Node-24-only runtime APIs**, or you break local dev.
 - ESM throughout (`"type": "module"`). Relative imports **must** use `.js` specifiers even from `.ts`
