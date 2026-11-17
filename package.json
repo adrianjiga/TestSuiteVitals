@@ -5,10 +5,14 @@
   "keywords": [
     "flaky-tests",
     "test-analytics",
+    "test-reports",
+    "testing",
     "ci",
     "github-actions",
     "junit",
     "playwright",
+    "cypress",
+    "mochawesome",
     "cli"
   ],
   "license": "MIT",
