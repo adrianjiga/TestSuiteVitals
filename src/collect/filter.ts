@@ -19,14 +19,36 @@ export interface FilteredRuns {
   excluded: WorkflowRun[];
 }
 
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Case-insensitive glob match where `*` matches any span; every other character is literal. */
+/**
+ * Case-insensitive glob match where `*` matches any span; every other character is literal.
+ * A two-pointer wildcard scan: on a mismatch it only retries from the last `*`, so time stays
+ * within pattern length × value length however many `*` the pattern has.
+ */
 export function matchesGlob(pattern: string, value: string): boolean {
-  const regex = new RegExp(`^${pattern.split("*").map(escapeRegExp).join(".*")}$`, "i");
-  return regex.test(value);
+  const p = pattern.toLowerCase();
+  const v = value.toLowerCase();
+  let pi = 0;
+  let vi = 0;
+  let star = -1;
+  let resume = 0;
+  while (vi < v.length) {
+    if (pi < p.length && p[pi] === "*") {
+      star = pi++;
+      resume = vi;
+    } else if (pi < p.length && p[pi] === v[vi]) {
+      pi++;
+      vi++;
+    } else if (star !== -1) {
+      pi = star + 1;
+      vi = ++resume;
+    } else {
+      return false;
+    }
+  }
+  while (p[pi] === "*") {
+    pi++;
+  }
+  return pi === p.length;
 }
 
 /** Partitions listed runs by the filter. An empty filter includes everything. */

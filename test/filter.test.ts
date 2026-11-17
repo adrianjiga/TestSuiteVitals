@@ -25,6 +25,23 @@ describe("matchesGlob", () => {
     expect(matchesGlob("CI", "CI deploy")).toBe(false);
   });
 
+  it("handles several wildcards, including empty and adjacent spans", () => {
+    expect(matchesGlob("*", "")).toBe(true);
+    expect(matchesGlob("", "")).toBe(true);
+    expect(matchesGlob("", "x")).toBe(false);
+    expect(matchesGlob("a**b", "ab")).toBe(true);
+    expect(matchesGlob("*-report-*", "ui-report-chrome")).toBe(true);
+    expect(matchesGlob("e2e-*-chrome", "e2e-ui-firefox")).toBe(false);
+    expect(matchesGlob("*a*b", "xaybz")).toBe(false);
+    expect(matchesGlob("a*b*c", "abbbc")).toBe(true);
+  });
+
+  it("matches many-wildcard patterns against long names in linear-ish time", () => {
+    const start = performance.now();
+    expect(matchesGlob("*a*a*a*b", "a".repeat(10_000))).toBe(false);
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+
   it("treats regex metacharacters as literals", () => {
     expect(matchesGlob("ci.yml", "ci.yml")).toBe(true);
     expect(matchesGlob("ci.yml", "ciXyml")).toBe(false);
