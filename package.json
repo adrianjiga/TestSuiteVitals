@@ -1,6 +1,6 @@
 {
   "name": "suitevitals",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The vital signs of your test suite. A CLI-first, zero-infrastructure tool that retroactively ingests CI artifacts and surfaces flaky tests.",
   "keywords": [
     "flaky-tests",

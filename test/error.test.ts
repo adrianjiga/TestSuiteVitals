@@ -8,6 +8,30 @@ import {
 } from "../src/events/error.js";
 
 describe("redactSecrets", () => {
+  it("runs in linear time on adversarial input", () => {
+    const n = 200_000;
+    const rep = (s: string) => s.repeat(n / s.length);
+    const start = performance.now();
+    for (const input of [rep("eyJ-"), rep("a."), `x://${rep(":")}`, rep("?a")]) {
+      redactSecrets(input);
+    }
+    expect(performance.now() - start).toBeLessThan(500);
+  });
+
+  it("redacts URL credentials whose password contains a colon", () => {
+    expect(redactSecrets("postgres://admin:pa:ss@db:5432/app")).toBe(
+      "postgres://[REDACTED]@db:5432/app",
+    );
+    expect(redactSecrets("see.https://u:p@host/x")).toBe("see.https://[REDACTED]@host/x");
+  });
+
+  it("redacts JWTs and query values in their usual positions", () => {
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcDEFghiJKLmnoPQRstuVWxyz0123456789aa";
+    expect(redactSecrets(`auth=${jwt} next`)).toBe("auth=[REDACTED] next");
+    expect(redactSecrets(`"${jwt}"`)).toBe('"[REDACTED]"');
+    expect(redactSecrets("GET /a?x=1&token=s3cr3t")).toBe("GET /a?x=[REDACTED]&token=[REDACTED]");
+  });
+
   it("redacts quoted values whole, including JSON keys", () => {
     expect(redactSecrets('password: "hunter 2 foo" rest')).toBe("password: [REDACTED] rest");
     expect(redactSecrets(`{"password":"a b c","user":"x"}`)).toBe(
