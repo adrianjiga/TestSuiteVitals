@@ -56,8 +56,9 @@ export const doctorCommand = defineCommand({
 /** Reads the recent runs' artifact names and the repo's manifests into {@link RepoSignals}. */
 async function gatherSignals(client: GitHubClient, ref: RepoRef): Promise<RepoSignals> {
   const { octokit } = client;
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
-  const { completed } = classifyRuns(await listRunsSince(octokit, ref, since));
+  const now = new Date();
+  const since = new Date(now.getTime() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+  const { completed } = classifyRuns(await listRunsSince(octokit, ref, since, now));
 
   const artifactNames = new Set<string>();
   for (const run of completed.slice(0, RUNS_TO_INSPECT)) {

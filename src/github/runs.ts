@@ -46,36 +46,80 @@ function normalize(run: ListedRun | FetchedRun): WorkflowRun {
   };
 }
 
+/** GitHub returns at most this many results for a `created`-filtered run listing. */
+export const RUN_LISTING_CAP = 1000;
+
+/** One `created` range's runs, or `complete: false` when it matched more than the cap. */
+export type RangeListing = { complete: true; runs: WorkflowRun[] } | { complete: false };
+
+/** Lists the runs created within `[start, end]` (both inclusive). */
+export type RangeLister = (start: Date, end: Date) => Promise<RangeListing>;
+
 /**
- * Lists workflow runs created at or after `since`, newest-first. Streams pages and
- * stops as soon as a run older than `since` is seen — the API is already filtered by
- * `created`, but the explicit break avoids fetching pages we would discard.
+ * Lists every run created in `[since, until]`, newest first. A range that matches more runs than
+ * GitHub will return ({@link RUN_LISTING_CAP}) is halved until each slice fits: paging a capped
+ * listing would silently stop at the newest 1000 runs, and the watermark would then pass the
+ * older ones without them ever being collected. Ranges are inclusive at both ends, so a run on a
+ * split boundary is listed twice and de-duped by id.
  */
-export async function listRunsSince(
+export async function listRunsWindowed(
+  listRange: RangeLister,
+  since: Date,
+  until: Date,
+): Promise<WorkflowRun[]> {
+  const byId = new Map<number, WorkflowRun>();
+  const ranges: Array<[Date, Date]> = [[since, until]];
+  for (let range = ranges.pop(); range; range = ranges.pop()) {
+    const [start, end] = range;
+    const listing = await listRange(start, end);
+    if (listing.complete) {
+      for (const run of listing.runs) {
+        byId.set(run.run_id, run);
+      }
+      continue;
+    }
+    const mid = new Date(start.getTime() + Math.floor((end.getTime() - start.getTime()) / 2));
+    if (mid.getTime() <= start.getTime()) {
+      throw new Error(
+        `More than ${RUN_LISTING_CAP} runs were created at ${start.toISOString()}; cannot list them all.`,
+      );
+    }
+    ranges.push([start, mid], [mid, end]);
+  }
+  return [...byId.values()].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+}
+
+/** Lists workflow runs created in `[since, until]`, newest first, past GitHub's listing cap. */
+export function listRunsSince(
   octokit: Octokit,
   ref: RepoRef,
   since: Date,
+  until: Date,
 ): Promise<WorkflowRun[]> {
-  const sinceMs = since.getTime();
-  const runs: WorkflowRun[] = [];
+  return listRunsWindowed((start, end) => listRunRange(octokit, ref, start, end), since, until);
+}
 
+async function listRunRange(
+  octokit: Octokit,
+  ref: RepoRef,
+  start: Date,
+  end: Date,
+): Promise<RangeListing> {
+  const runs: WorkflowRun[] = [];
   const iterator = octokit.paginate.iterator(octokit.rest.actions.listWorkflowRunsForRepo, {
     owner: ref.owner,
     repo: ref.repo,
-    created: `>=${since.toISOString()}`,
+    created: `${start.toISOString()}..${end.toISOString()}`,
     per_page: 100,
   });
-
   for await (const { data } of iterator) {
-    for (const run of data) {
-      if (new Date(run.created_at).getTime() < sinceMs) {
-        return runs;
-      }
-      runs.push(normalize(run));
+    const total = (data as { total_count?: number }).total_count ?? 0;
+    if (total > RUN_LISTING_CAP) {
+      return { complete: false };
     }
+    runs.push(...data.map(normalize));
   }
-
-  return runs;
+  return { complete: true, runs };
 }
 
 /** Fetches a single workflow run by id — the D12 pending-run re-check path. */

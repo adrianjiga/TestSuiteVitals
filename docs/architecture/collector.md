@@ -211,6 +211,11 @@ listed runs above attempt 1), so the lookback never re-downloads already-collect
 re-run older than the lookback is still collected only by a `--hours-back` backfill covering
 its creation date.
 
+GitHub returns at most 1000 runs for a `created`-filtered listing, however many pages exist.
+Listing queries explicit `created:start..end` ranges and halves any range whose `total_count`
+exceeds the cap until every slice fits (`listRunsWindowed`), de-duping boundary runs by id —
+paging a capped listing would stop at the newest 1000 and let the watermark pass the rest.
+
 A partial re-run ("re-run failed jobs") carries the untouched jobs' artifacts over, so a run's
 artifact list mixes attempts. Each artifact is attributed to the latest attempt that had started
 when it was created (`attemptForArtifact`, one `GET …/attempts/{n}` per extra attempt, only for

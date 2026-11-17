@@ -70,7 +70,8 @@ artifacts out. A GitHub re-run keeps its run's `created_at`, so listing reaches
 `--rerun-lookback-hours` (default 168) behind the window and `src/collect/rerun.ts` keeps a run
 from that stretch only when its attempt beats `rerun_attempts` in state; each artifact's events
 carry the attempt that uploaded it (`attemptForArtifact`), since partial re-runs carry earlier
-attempts' artifacts over. `--max-runs` caps a backfill oldest-first (`capRuns`/`watermarkDisposal`), and the
+attempts' artifacts over. Run listing splits `created` ranges past GitHub's 1000-result cap
+(`listRunsWindowed`). `--max-runs` caps a backfill oldest-first (`capRuns`/`watermarkDisposal`), and the
 watermark never passes a deferred run. The repos share one client/state-file/data-dir and run
 sequentially via `collectRepo`; state is keyed per repo and saved after each, so a crash mid-loop
 keeps the repos already collected, and one repo's failure is reported (non-zero exit) while the
