@@ -29,8 +29,11 @@ silently.
 ## Pipeline (per repo)
 
 1. **Load state** → watermark + `pending_runs`.
-2. **List runs** — paginate runs newest-first; stop past the window; re-check `pending_runs`
-   explicitly.
+2. **List runs** — list by `created` range from the window start, or `--rerun-lookback-hours`
+   (default 48) earlier once the repo has a watermark, halving any range past GitHub's 1000-result
+   cap. Runs from the lookback stretch are kept only when their attempt is newer than the one
+   collected (`rerun_attempts`); tracked `pending_runs` the listing returns are kept, and the rest
+   are re-checked by id.
 3. **Filter & classify** — `--workflow`/`--exclude-trigger` drop runs by policy (the watermark
    *may* pass those, or excluding a busy workflow would stall it forever); the rest classify as
    completed → collect, in-progress/queued → `pending_runs` (the watermark does not advance
@@ -41,16 +44,17 @@ silently.
    already exceeds the extraction budget is skipped (as oversized) before download, so it can
    never balloon memory. Extraction enforces a decompressed-size budget (default 500 MB,
    checked from the zip's declared entry sizes *before* inflating, and shared by every archive
-   nested inside the artifact), so a zip bomb is counted
-   as oversized and skipped, never inflated; any other extraction failure (corrupt or hostile
-   archive) costs that one artifact, with a warning — download errors still abort the repo,
-   since they are transient and the watermark has not advanced.
+   nested inside the artifact), so a zip bomb is counted as oversized and skipped, never
+   inflated; any other extraction failure (corrupt or hostile archive) costs that one artifact,
+   with a warning — download errors still abort the repo, since they are transient and the
+   watermark has not advanced. Each artifact of a re-run is attributed to the attempt that
+   uploaded it, and artifacts from attempts already collected are skipped before download.
 5. **Adapter dispatch** by sniffing extracted files: `<testsuites>` root → JUnit; JSON with
    `config` + `suites` → Playwright; JSON with `stats` + `results` → Mochawesome. A per-repo
    config override wins over sniffing. A candidate file that throws during read or parse is
    warned and skipped, never fatal.
-6. **Normalize & append** events with dedup; the append (and its directory) is fsynced, and state is updated only
-   after it succeeds. A single-writer lock (`<state-file>.lock`) rejects a concurrent collect
+6. **Normalize & append** events with dedup; the append (and its directory) is fsynced, and state
+   is updated only after it succeeds. A single-writer lock (`<state-file>.lock`) rejects a concurrent collect
    on the same state file, so the read-keys → append sequence never races itself; a
    `<data-dir>/.lock`, also taken by `compact` and `prune`, keeps them from deleting a partition
    file that a collect is appending to.
@@ -92,7 +96,7 @@ silently.
 The `collect` command currently authenticates (single Octokit transport, token chain per
 [D8](decisions.md#d8--auth-one-transport-pluggable-token-resolution)), loads state, computes
 the collection window (watermark / `--hours-back` / 72h default), lists workflow runs since
-that window, classifies them into completed vs. pending, and for the completed runs performs
+that window plus the re-run lookback, classifies them into completed vs. pending, and for the completed runs performs
 tiered artifact discovery ([D9](decisions.md#d9--artifact-discovery-tiered)): list
 artifact names/sizes (tier 1), download the report-glob matches and extract them into a temp dir
 (tier 2), and — only when a run has *no* name match — download and extract its remaining artifacts

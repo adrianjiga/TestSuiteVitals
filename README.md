@@ -295,8 +295,9 @@ not an error: `report --json` prints `[]`. Set
 > **In short:** `collect` ingests **JUnit**, **Playwright blob**, and
 > **mochawesome** reports from one or more repos (repeatable `--repo` or a `--config` file) into
 > dedup'd monthly NDJSON partitions, in parallel with rate-limit backoff, with workflow/trigger
-> filters and a `--max-runs` cap, and falls back to sniffing unnamed artifacts (under
-> `--max-artifact-mb`) when a run has no name match. `report` streams those partitions back,
+> filters and a `--max-runs` cap, picks up re-runs of recent runs, and falls back to sniffing
+> unnamed artifacts (under `--max-artifact-mb`) when a run has no name match. `report` streams
+> those partitions back,
 > aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON),
 > filterable by `--since`/`--branch`/`--workflow`; `dashboard` renders the same ranking as a
 > self-contained HTML monitor; `compact` zstd-compresses closed months; `prune` applies a

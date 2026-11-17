@@ -37,7 +37,8 @@ collected data.
 `file` is normalized before hashing (`normalizeTestFile`): `\` becomes `/` and a GitHub Actions
 workspace root (`/home/runner/work/<repo>/<repo>/`, `D:\a\<repo>\<repo>\`, the macOS equivalent,
 a self-hosted `…/_work/<repo>/<repo>/` or a container job's `/__w/<repo>/<repo>/`) is stripped, so
-emitters that write absolute or OS-native paths still give a test one id across runners. Mochawesome's relative `file` is preferred over Mocha's absolute `fullFile`.
+emitters that write absolute or OS-native paths still give a test one id across runners.
+Mochawesome's relative `file` is preferred over Mocha's absolute `fullFile`.
 Relative paths and class names are unchanged by this, so their ids are too; only data collected
 earlier from an absolute- or backslash-path emitter keeps its old ids, and re-collecting an
 overlapping window would add those tests again under the new ones.
