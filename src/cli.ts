@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { defineCommand, runMain } from "citty";
 import { collectCommand } from "./commands/collect.js";
 import { compactCommand } from "./commands/compact.js";
@@ -7,10 +8,14 @@ import { doctorCommand } from "./commands/doctor.js";
 import { pruneCommand } from "./commands/prune.js";
 import { reportCommand } from "./commands/report.js";
 
+const { version } = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { version: string };
+
 const main = defineCommand({
   meta: {
     name: "suitevitals",
-    version: "0.0.0",
+    version,
     description: "The vital signs of your test suite — flaky-test detection from CI artifacts.",
   },
   subCommands: {
