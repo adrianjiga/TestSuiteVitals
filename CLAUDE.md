@@ -106,7 +106,8 @@ per-test time-ordered outcome list, so the `Aggregator` takes an opt-in `timelin
 The `compact` command (`src/commands/compact.ts` → `src/store/compact.ts`) zstd-compresses closed
 months (D2): each `<YYYY-MM>.ndjson` becomes `<YYYY-MM>.ndjson.zst`, the current month stays
 uncompressed for cheap appends. The compression chokepoint is `src/store/compress.ts`
-(`@mongodb-js/zstd`, native but with prebuilt binaries so it runs on the Node-22 dev floor). The
+(built-in `node:zlib` zstd, available from Node 22.15 — no native dependency, so installs never
+need an install script or a compiler, and it reads files written by the old `@mongodb-js/zstd`). The
 reader (`read.ts`) and append-dedup (`ndjson.ts`) read either form transparently. Crash safety:
 compact writes and fsyncs the new `.zst` as a temp file, atomically renames it (fsyncing the
 directory, `src/store/durable.ts`), then removes the raw

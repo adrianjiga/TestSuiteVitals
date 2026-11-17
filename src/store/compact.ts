@@ -1,14 +1,16 @@
 import { readdir, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { compress } from "@mongodb-js/zstd";
-import { NDJSON_EXT, partitionFileMonth, readPartitionText, ZSTD_EXT } from "./compress.js";
+import {
+  compressPartition,
+  NDJSON_EXT,
+  partitionFileMonth,
+  readPartitionText,
+  ZSTD_EXT,
+} from "./compress.js";
 import { dedupKey } from "./dedup.js";
 import { syncDir, writeFileDurable } from "./durable.js";
 import { parseEventLine } from "./ndjson.js";
 import { repoDir } from "./partition.js";
-
-/** zstd level: high ratio is worth the CPU since closed months are written once (D2). */
-const ZSTD_LEVEL = 19;
 
 export interface MonthCompaction {
   month: string;
@@ -70,7 +72,7 @@ export async function compactRepo(
     }
     const text = await mergeMonth(dir, files);
 
-    const compressed = await compress(Buffer.from(text, "utf8"), ZSTD_LEVEL);
+    const compressed = await compressPartition(text);
     const finalPath = join(dir, `${month}${ZSTD_EXT}`);
     const tmpPath = `${finalPath}.tmp`;
     await writeFileDurable(tmpPath, compressed);
