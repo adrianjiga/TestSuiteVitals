@@ -165,9 +165,17 @@ export const collectCommand = defineCommand({
       cliHoursBack: hoursBack,
       cliConcurrency: concurrency,
       cliWorkflow: args.workflow,
-      cliExcludeTriggers: parseCommaList(args["exclude-trigger"]),
+      cliExcludeTriggers: parseCommaList(
+        args["exclude-trigger"],
+        "--exclude-trigger",
+        "trigger event names",
+      ),
       cliMatrixFromArtifact: args["matrix-from-artifact"],
-      cliExcludeArtifacts: parseCommaList(args["exclude-artifact"]),
+      cliExcludeArtifacts: parseCommaList(
+        args["exclude-artifact"],
+        "--exclude-artifact",
+        "artifact name globs",
+      ),
       config,
       defaultConcurrency: DEFAULT_CONCURRENCY,
     });
@@ -620,18 +628,22 @@ function parsePositiveIntFlag(value: string | undefined, flag: string): number |
 }
 
 /** Splits a comma-separated flag list (`--exclude-trigger`, `--exclude-artifact`). */
-function parseCommaList(value: string | undefined): string[] | undefined {
+export function parseCommaList(
+  value: string | undefined,
+  flag: string,
+  expected: string,
+): string[] | undefined {
   if (value === undefined) {
     return undefined;
   }
-  const triggers = value
+  const items = value
     .split(",")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
-  if (triggers.length === 0) {
-    throw new Error(`Invalid --exclude-trigger "${value}": expected trigger event names.`);
+  if (items.length === 0) {
+    throw new Error(`Invalid ${flag} "${value}": expected ${expected}.`);
   }
-  return triggers;
+  return items;
 }
 
 /** Parses and validates `--max-artifact-mb`; returns undefined to use the default. */
