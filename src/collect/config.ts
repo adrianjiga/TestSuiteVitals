@@ -206,14 +206,14 @@ function optionalConcurrency(value: unknown, where: string): number | undefined 
   return value;
 }
 
-function optionalString(value: unknown, where: string): string | undefined {
+export function optionalString(value: unknown, where: string): string | undefined {
   if (value === undefined) {
     return undefined;
   }
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Invalid ${where}: expected a non-empty string.`);
   }
-  return value;
+  return value.trim();
 }
 
 /**
@@ -221,11 +221,11 @@ function optionalString(value: unknown, where: string): string | undefined {
  * immediately with the offending key named — rather than at the first artifact, mid-collect,
  * after the network work is already done.
  */
-function optionalPattern(value: unknown, where: string): string | undefined {
-  const pattern = optionalString(value, where);
-  if (pattern === undefined) {
+export function optionalPattern(value: unknown, where: string): string | undefined {
+  if (optionalString(value, where) === undefined) {
     return undefined;
   }
+  const pattern = value as string;
   compileMatrixPattern(pattern, where);
   return pattern;
 }
@@ -241,5 +241,5 @@ function optionalStringArray(value: unknown, where: string): string[] | undefine
   ) {
     throw new Error(`Invalid ${where}: expected an array of non-empty strings.`);
   }
-  return value as string[];
+  return (value as string[]).map((item) => item.trim());
 }

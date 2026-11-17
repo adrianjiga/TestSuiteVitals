@@ -81,7 +81,9 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
   merges per-repo override → CLI flag → config default → built-in for `hoursBack`, `concurrency`,
   `workflow`, `excludeTriggers`, de-duping repos). Repos run sequentially via `collectRepo` over one
   client/state file/data dir; state is saved per repo, and one repo's failure exits non-zero while
-  the rest still collect.
+  the rest still collect. `collect`'s own flags are validated in `src/commands/flags.ts` (reusing
+  the config file's `optionalString`/`optionalPattern` rules) before the config file is read or any
+  network call is made.
 - Policy filters (`--workflow` glob, `--exclude-trigger`) may let the watermark pass excluded runs,
   so filtering never stalls collection; `--exclude-trigger pull_request` keeps fork-PR artifacts
   out. `--max-runs` caps a backfill oldest-first (`capRuns`/`watermarkDisposal`); the watermark
@@ -154,12 +156,14 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
 - Tests live in `test/`. Pure logic is unit-tested: window, classification, run filtering/capping,
   repo parse, state, glob matching, partitioning, prune cutoff, extract, fetch orchestration,
   redaction, fingerprint, adapters, event build, dedup, watermark, NDJSON append, manifest-path
-  selection.
+  selection, flag parsing.
 - Only the raw Octokit calls are left to integration: `listRunsSince`, `getRun`,
   `listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`, `listAttemptStarts`,
   `listRecentCompletedRuns`.
 - Inject anything that touches the outside world, as `resolveToken` takes `env` and `runGhCli`, so
-  tests never spawn processes or read `process.env`. Renderers default to the plain palette, so
+  tests never spawn processes or read `process.env`. The one exception is
+  `test/collect-cli.test.ts`, which runs the real CLI to prove flags are rejected before
+  authentication, with a dummy token and scratch state and data dirs. Renderers default to the plain palette, so
   assert on colorless output.
 
 ## Conventions

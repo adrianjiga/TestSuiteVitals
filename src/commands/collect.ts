@@ -39,6 +39,7 @@ import {
 import { acquireDataDirLock, acquireLock } from "../state/lock.js";
 import { loadState, repoState, type State, saveState } from "../state/state.js";
 import { type AppendResult, appendEvents } from "../store/ndjson.js";
+import { parseCommaList, parseMatrixFlag, parseWorkflowFlag } from "./flags.js";
 import { parseRepoFlags } from "./repo-flags.js";
 
 const DEFAULT_STATE_PATH = "state.json";
@@ -157,6 +158,18 @@ export const collectCommand = defineCommand({
     const maxArtifactMb = parseMaxArtifactMb(args["max-artifact-mb"]);
     const maxRuns = parsePositiveIntFlag(args["max-runs"], "--max-runs");
     const rerunLookbackHours = parseRerunLookback(args["rerun-lookback-hours"]);
+    const workflow = parseWorkflowFlag(args.workflow);
+    const excludeTriggers = parseCommaList(
+      args["exclude-trigger"],
+      "--exclude-trigger",
+      "trigger event names",
+    );
+    const excludeArtifacts = parseCommaList(
+      args["exclude-artifact"],
+      "--exclude-artifact",
+      "artifact name globs",
+    );
+    const matrixFromArtifact = parseMatrixFlag(args["matrix-from-artifact"]);
     const palette = createPalette(colorSupported);
 
     const config = args.config ? await loadConfig(args.config) : undefined;
@@ -164,10 +177,10 @@ export const collectCommand = defineCommand({
       cliRepos: parseRepoFlags(rawArgs),
       cliHoursBack: hoursBack,
       cliConcurrency: concurrency,
-      cliWorkflow: args.workflow,
-      cliExcludeTriggers: parseCommaList(args["exclude-trigger"]),
-      cliMatrixFromArtifact: args["matrix-from-artifact"],
-      cliExcludeArtifacts: parseCommaList(args["exclude-artifact"]),
+      cliWorkflow: workflow,
+      cliExcludeTriggers: excludeTriggers,
+      cliMatrixFromArtifact: matrixFromArtifact,
+      cliExcludeArtifacts: excludeArtifacts,
       config,
       defaultConcurrency: DEFAULT_CONCURRENCY,
     });
@@ -617,21 +630,6 @@ function parsePositiveIntFlag(value: string | undefined, flag: string): number |
     throw new Error(`Invalid ${flag} "${value}": expected a positive integer.`);
   }
   return n;
-}
-
-/** Splits a comma-separated flag list (`--exclude-trigger`, `--exclude-artifact`). */
-function parseCommaList(value: string | undefined): string[] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const triggers = value
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  if (triggers.length === 0) {
-    throw new Error(`Invalid --exclude-trigger "${value}": expected trigger event names.`);
-  }
-  return triggers;
 }
 
 /** Parses and validates `--max-artifact-mb`; returns undefined to use the default. */

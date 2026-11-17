@@ -219,6 +219,9 @@ Notable behavior:
   download. Both cases are reported as oversized.
 - **Filters are policy.** Runs dropped by `--workflow` or `--exclude-trigger`
   are never collected, and the watermark may move past them.
+- **Flags are checked up front.** An empty `--workflow`, `--exclude-trigger` or
+  `--exclude-artifact`, or an invalid `--matrix-from-artifact`, exits 1 before
+  the config file is read or any network call is made.
 - **Pending runs.** Queued and in-progress runs are not collected. The
   watermark stops before them and their ids are saved, so they are re-fetched
   by id until they complete or are deleted.

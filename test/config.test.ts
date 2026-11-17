@@ -15,6 +15,22 @@ describe("parseConfig", () => {
     expect(config.repos).toEqual(["owner/a", { repo: "owner/b", hoursBack: 168, concurrency: 2 }]);
   });
 
+  it("trims padded globs and trigger names but keeps a matrix pattern as written", () => {
+    const config = parseConfig(
+      JSON.stringify({
+        workflow: " e2e-* ",
+        excludeTriggers: [" pull_request "],
+        excludeArtifacts: ["final-report "],
+        matrixFromArtifact: "r-(?<browser>\\w+) ",
+        repos: ["owner/a"],
+      }),
+    );
+    expect(config.workflow).toBe("e2e-*");
+    expect(config.excludeTriggers).toEqual(["pull_request"]);
+    expect(config.excludeArtifacts).toEqual(["final-report"]);
+    expect(config.matrixFromArtifact).toBe("r-(?<browser>\\w+) ");
+  });
+
   it("rejects malformed JSON, non-objects, and a non-array repos field", () => {
     expect(() => parseConfig("{not json")).toThrow(/not valid JSON/);
     expect(() => parseConfig("[]")).toThrow(/expected a JSON object/);

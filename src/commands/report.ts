@@ -7,6 +7,7 @@ import { parseSince, rankTests } from "../report/rank.js";
 import { noEventsError, readRepoEvents } from "../report/read.js";
 import { type ReportMeta, renderReport, renderReportJson } from "../report/render.js";
 import { DEFAULT_MIN_RUNS } from "../report/score.js";
+import { parseWorkflowFlag } from "./flags.js";
 import { parseRepoFlags } from "./repo-flags.js";
 
 const DEFAULT_DATA_DIR = "data";
@@ -78,6 +79,7 @@ export const reportCommand = defineCommand({
     const minRuns = parsePositiveInt(args["min-runs"], "--min-runs") ?? DEFAULT_MIN_RUNS;
     const limit = parsePositiveInt(args.limit, "--limit") ?? DEFAULT_LIMIT;
     const since = parseSince(args.since);
+    const workflow = parseWorkflowFlag(args.workflow);
 
     const aggregator = new Aggregator({ byMatrix: args["by-matrix"] });
     let stored = 0;
@@ -89,7 +91,7 @@ export const reportCommand = defineCommand({
       if (args.branch && event.run.branch !== args.branch) {
         continue;
       }
-      if (args.workflow && !matchesGlob(args.workflow, event.run.workflow)) {
+      if (workflow && !matchesGlob(workflow, event.run.workflow)) {
         continue;
       }
       aggregator.add(event);
@@ -99,7 +101,7 @@ export const reportCommand = defineCommand({
     if (stored === 0) {
       throw noEventsError(args["data-dir"], slug);
     }
-    const filterLabel = describeFilters(args.since, args.branch, args.workflow);
+    const filterLabel = describeFilters(args.since, args.branch, workflow);
     if (aggregates.length === 0) {
       console.log(
         args.json
