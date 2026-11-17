@@ -42,9 +42,9 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   [/\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g, "[REDACTED]"],
   [/\bAIza[0-9A-Za-z_-]{35}\b/g, "[REDACTED]"],
   // Bare JWTs: three base64url segments, the first always starting eyJ ('{"').
-  [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]"],
+  [/(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{10,}\b/g, "[REDACTED]"],
   // Credentials in a URL authority: scheme://user:pass@host (connection strings).
-  [/\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/g, "$1[REDACTED]@"],
+  [/(?<![a-zA-Z0-9+.-])([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/g, "$1[REDACTED]@"],
   // Bearer/Basic auth headers (covers the Authorization header case).
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/g, "$1 [REDACTED]"],
   // CLI flags taking the secret as the next argument: `--password hunter2`.
@@ -52,7 +52,7 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   // key=value / key: value / "key": "value" secrets, quoted values kept whole.
   [new RegExp(`\\b(${SECRET_KEYS})\\b(["']?\\s*[=:]\\s*)${SECRET_VALUE}`, "gi"), "$1$2[REDACTED]"],
   // Query-string values (URLs often carry signed tokens).
-  [/([?&][^=\s&]+=)[^\s&]+/g, "$1[REDACTED]"],
+  [/([?&][^=\s&?]+=)[^\s&]+/g, "$1[REDACTED]"],
 ];
 
 /** Removes known secret shapes from text. */
