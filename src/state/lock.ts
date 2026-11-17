@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { link, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { copyFile, mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 /** Thrown when the lock is already held — another suitevitals process is running. */
@@ -94,8 +95,8 @@ async function isStale(
  * could each delete, and the slower one would delete the lock the faster one had just
  * re-created, leaving both "holding" it. Renaming the lock aside is atomic, so exactly one
  * process gets the file; it then checks the file still names the dead holder, and if it grabbed
- * a fresh live lock instead, links it back into place. Only a third process creating the lock in
- * that brief link-back window can still collide. Returns whether it broke the lock.
+ * a fresh live lock instead, restores it with an exclusive create. A third process taking the
+ * path in that brief window makes this process stop with a {@link LockError}. Returns whether it broke the lock.
  */
 async function breakStaleLock(path: string, holder: string | undefined): Promise<boolean> {
   const aside = `${path}.${process.pid}.${randomUUID()}.stale`;
@@ -111,8 +112,16 @@ async function breakStaleLock(path: string, holder: string | undefined): Promise
     await rm(aside, { force: true });
     return true;
   }
-  await link(aside, path).catch(() => {});
-  await rm(aside, { force: true });
+  try {
+    await copyFile(aside, path, constants.COPYFILE_EXCL);
+  } catch (error) {
+    throw new LockError(
+      `Lock ${path} changed hands while a stale lock was being broken ` +
+        `(${(error as Error).message}); check for other suitevitals processes and retry.`,
+    );
+  } finally {
+    await rm(aside, { force: true });
+  }
   return false;
 }
 
