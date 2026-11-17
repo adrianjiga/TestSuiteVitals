@@ -8,11 +8,7 @@ import { dedupKey } from "../store/dedup.js";
 import { parseEventLine } from "../store/ndjson.js";
 import { repoDir } from "../store/partition.js";
 
-/**
- * The error for a repo with no stored events at all. It names the resolved partition directory,
- * since the usual cause is running from a different directory than `collect` (the default
- * `--data-dir` is relative to the working directory) rather than an uncollected repo.
- */
+/** The error for a repo with no stored events, naming the resolved partition directory. */
 export function noEventsError(dataDir: string, slug: string): Error {
   return new Error(
     `No collected events for ${slug} in ${resolve(dataDir, repoDir(slug))}. ` +

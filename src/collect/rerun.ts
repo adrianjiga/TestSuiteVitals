@@ -1,11 +1,7 @@
 import type { WorkflowRun } from "../github/runs.js";
 import type { RepoState } from "../state/state.js";
 
-/**
- * How far behind the window start runs are re-listed to catch re-runs. A GitHub re-run keeps
- * the original `created_at`, so the `created`-filtered listing past the watermark never shows
- * a new attempt of an older run; re-runs of flaky tests land within days, not weeks.
- */
+/** How far behind the window start runs are re-listed to catch re-runs of older runs. */
 export const DEFAULT_RERUN_LOOKBACK_HOURS = 48;
 
 /** Where run listing starts: the window start, or `lookbackHours` before now if earlier. */
@@ -15,9 +11,8 @@ export function listingStart(windowSince: Date, now: Date, lookbackHours: number
 }
 
 /**
- * The re-run attempts already collected. A repo collected before re-runs were tracked has a
- * watermark but no record, and its stored data already covers every listed run before the window
- * at its current attempt, so those attempts are taken as collected.
+ * The re-run attempts already collected. For a repo with a watermark but no record yet, listed
+ * runs before the window count as collected at their current attempt.
  */
 export function initialCollectedAttempts(
   previous: RepoState,
@@ -42,8 +37,7 @@ export function initialCollectedAttempts(
 
 /**
  * Keeps every run inside the window and every tracked pending run, and a run from the lookback
- * stretch before the window only when it has an attempt newer than the last one collected (`collectedAttempts`, default 1) — so the
- * lookback re-collects re-runs without re-downloading every already-collected run.
+ * stretch only when its attempt is newer than the one collected (`collectedAttempts`, default 1).
  */
 export function selectRuns(
   runs: WorkflowRun[],
@@ -67,10 +61,8 @@ export function selectRuns(
 }
 
 /**
- * The re-run bookkeeping to save: the highest attempt collected or excluded by filters per run
- * (an excluded one would otherwise be re-selected every collect), kept only for runs still
- * inside the listing (older ones can no longer be re-listed) and only above attempt 1 (the
- * default), so the map stays as small as the number of recent re-runs.
+ * The re-run attempts to save: the highest collected or filter-excluded attempt per run still in
+ * the listing, kept only above attempt 1.
  */
 export function nextCollectedAttempts(
   previous: Record<string, number>,

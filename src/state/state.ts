@@ -11,7 +11,7 @@ export interface RepoState {
   watermark?: string;
   /** In-progress/queued run ids to re-check next collection; the watermark never passes these. */
   pending_runs: number[];
-  /** Highest attempt collected per recent re-run (run id → attempt), so the lookback skips it. */
+  /** Highest attempt collected per recent re-run (run id → attempt). */
   rerun_attempts?: Record<string, number>;
   /** ISO timestamp of the last successful collection for this repo. */
   last_collected_at?: string;
@@ -28,8 +28,8 @@ export function emptyState(): State {
 }
 
 /**
- * Returns the repo's state, or an empty entry if this repo has never been collected. A
- * hand-edited entry missing `pending_runs` gets an empty list rather than crashing collect.
+ * Returns the repo's state, or an empty entry if it has never been collected; a missing
+ * `pending_runs` defaults to empty.
  */
 export function repoState(state: State, repo: string): RepoState {
   const entry = state.repos[repo];

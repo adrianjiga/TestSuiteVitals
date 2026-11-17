@@ -15,14 +15,13 @@ export interface AcquireLockOptions {
 
 /**
  * Acquires an advisory single-writer lock by creating `path` exclusively (`wx`), writing the
- * holder's pid and a random token. Two overlapping `collect` runs on the same state file would otherwise race the
- * read-keys → append sequence into duplicate events and clobber each other's state (F5); the
- * loser fails fast with a clear message instead. Returns a release function.
+ * holder's pid and a random token. Two overlapping `collect` runs on the same state file would
+ * otherwise race the read-keys → append sequence into duplicate events and clobber each other's
+ * state (F5); the loser fails fast with a clear message instead. Returns a release function.
  *
  * A lock whose recorded pid is no longer running is stale — the holder was SIGKILLed or died
  * without reaching its cleanup — and is broken automatically (with a note) rather than demanding
- * a manual delete; see {@link breakStaleLock} for why two processes racing that break cannot both
- * win. The lock also records a random token, so releasing it never deletes a successor's lock.
+ * a manual delete. Release deletes the lock only while it still holds this process's token.
  */
 export async function acquireLock(
   path: string,
@@ -91,12 +90,9 @@ async function isStale(
 }
 
 /**
- * Removes a stale lock. Deleting by path is racy: two processes that both saw the dead holder
- * could each delete, and the slower one would delete the lock the faster one had just
- * re-created, leaving both "holding" it. Renaming the lock aside is atomic, so exactly one
- * process gets the file; it then checks the file still names the dead holder, and if it grabbed
- * a fresh live lock instead, restores it with an exclusive create. A third process taking the
- * path in that brief window makes this process stop with a {@link LockError}. Returns whether it broke the lock.
+ * Moves a stale lock aside atomically and deletes it if it still names the dead `holder`. A live
+ * lock moved by mistake is restored with an exclusive create, or a {@link LockError} is thrown if
+ * that fails. Returns whether it broke the lock.
  */
 async function breakStaleLock(path: string, holder: string | undefined): Promise<boolean> {
   const aside = `${path}.${process.pid}.${randomUUID()}.stale`;
@@ -133,11 +129,7 @@ async function releaseIfOwned(path: string, contents: string): Promise<void> {
   }
 }
 
-/**
- * Locks a data directory, so `compact`/`prune` never delete a partition file that a concurrent
- * `collect` is appending to (the appended events would vanish with the file while that collect
- * advanced its watermark past them).
- */
+/** Locks a data directory against a concurrent `collect`, `compact` or `prune`. */
 export async function acquireDataDirLock(
   dataDir: string,
   options: AcquireLockOptions = {},

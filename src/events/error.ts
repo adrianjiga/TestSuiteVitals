@@ -21,7 +21,6 @@ const GLUED = "[^\\s,;})\\]]*";
 /**
  * A secret value: a quoted string (spaces and backslash-escaped quotes included, plus anything
  * glued to its closing quote up to a field delimiter), else everything up to whitespace.
- * Stopping at an escaped quote would leave the rest of a value like `"ab\\"cd ef"` stored.
  */
 const SECRET_VALUE = `("(?:[^"\\\\]|\\\\.)*"${GLUED}|'(?:[^'\\\\]|\\\\.)*'${GLUED}|\\S+)`;
 

@@ -81,9 +81,7 @@ export function parseJUnit(xml: string, options: RedactOptions = {}): ParsedTest
 
 /**
  * Gathers every `<testsuite>` at any depth, under a `<testsuites>` root or a lone `<testsuite>`.
- * Some emitters (Gradle, JUnit 5 platform, Maven aggregators) nest suites inside suites; reading
- * only the first level silently dropped every inner suite's tests. An inner suite without its own
- * `file` inherits the enclosing suite's.
+ * An inner suite without its own `file` inherits the enclosing suite's.
  */
 function collectSuites(
   node: XmlNode,

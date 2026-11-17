@@ -24,9 +24,9 @@ export interface MonthCompaction {
  * is skipped. If a month somehow has both forms (a late append after compaction, or a crash
  * mid-compaction), they are merged into one `.ndjson.zst`.
  *
- * Crash safety: the new `.zst` is written to a temp file, fsynced, and atomically renamed (with the
- * directory fsynced) before the raw `.ndjson` is removed. A crash between leaves both files briefly; the reader dedups overlapping
- * keys per month, so neither double-counts.
+ * Crash safety: the new `.zst` is written to a temp file, fsynced, and atomically renamed (with
+ * the directory fsynced) before the raw `.ndjson` is removed. A crash between leaves both files
+ * briefly; the reader dedups overlapping keys per month, so neither double-counts.
  */
 export async function compactRepo(
   dataDir: string,

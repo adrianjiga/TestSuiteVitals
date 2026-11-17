@@ -40,10 +40,8 @@ export const colorSupported: boolean = pc.isColorSupported;
 export const plainPalette: Palette = createPalette(false);
 
 /**
- * Neutralizes control characters in text that came from a CI artifact (test titles, file and
- * artifact names, parser errors) before it reaches the terminal. Raw, an ESC could clear the
- * screen and print fake output, retitle the window, or (OSC 52) write the clipboard. Whitespace
- * controls become a space so layout survives; the rest become U+FFFD so tampering stays visible.
+ * Replaces control characters in artifact-derived text before it is printed: tab, newline and
+ * carriage return become a space, every other one U+FFFD.
  */
 export function terminalSafe(text: string): string {
   let safe = "";

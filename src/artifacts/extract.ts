@@ -5,7 +5,7 @@ import { type UnzipFileInfo, unzipSync } from "fflate";
 /** Default ceiling (MB) on a single archive's *decompressed* size — a zip-bomb / OOM guard (F1). */
 export const DEFAULT_MAX_EXTRACT_MB = 500;
 
-/** Declared uncompressed bytes extracted so far against a ceiling, shared across nested archives. */
+/** Declared uncompressed bytes extracted so far, shared across nested archives, and the ceiling. */
 interface ExtractionBudget {
   used: number;
   max: number;
@@ -70,11 +70,6 @@ export function extractZipNested(
   return extractNested(zip, destDir, maxDepth, { used: 0, max: maxBytes });
 }
 
-/**
- * One budget spans the whole artifact, nested archives included: a fresh budget per inner zip
- * would let an artifact of many small, highly compressed inner zips each expand to the full
- * ceiling, multiplying the bytes written to disk by the number of inner zips.
- */
 async function extractNested(
   zip: Uint8Array,
   destDir: string,
@@ -110,9 +105,9 @@ async function extractNested(
 
 /**
  * A fflate entry filter that accumulates each entry's *declared* uncompressed size and throws
- * once the shared total exceeds `budget.max` — before the offending entry is inflated, so a zip bomb never
- * allocates its payload. (A crafted header could understate its size; the declared size catches
- * every realistic bomb and all accidental-OOM cases.)
+ * once the shared total exceeds `budget.max` — before the offending entry is inflated, so a zip
+ * bomb never allocates its payload. (A crafted header could understate its size; the declared
+ * size catches every realistic bomb and all accidental-OOM cases.)
  */
 function budgetFilter(budget: ExtractionBudget): (file: UnzipFileInfo) => boolean {
   return (file) => {

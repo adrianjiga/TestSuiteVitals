@@ -25,8 +25,7 @@ export interface WindowOptions {
  *   else the stored watermark → else a {@link DEFAULT_BACKFILL_HOURS}-hour first-run backfill.
  *
  * `--hours-back` may widen past the watermark because dedup makes overlapping collection
- * safe, but it never narrows the window: runs between the watermark and a later
- * `now - hoursBack` would otherwise be skipped while the watermark advanced past them.
+ * safe, but never narrows it.
  */
 export function computeWindow(state: RepoState, options: WindowOptions = {}): CollectionWindow {
   const { hoursBack, now = new Date() } = options;

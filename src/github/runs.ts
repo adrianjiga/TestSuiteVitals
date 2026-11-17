@@ -56,11 +56,9 @@ export type RangeListing = { complete: true; runs: WorkflowRun[] } | { complete:
 export type RangeLister = (start: Date, end: Date) => Promise<RangeListing>;
 
 /**
- * Lists every run created in `[since, until]`, newest first. A range that matches more runs than
- * GitHub will return ({@link RUN_LISTING_CAP}) is halved until each slice fits: paging a capped
- * listing would silently stop at the newest 1000 runs, and the watermark would then pass the
- * older ones without them ever being collected. Ranges are inclusive at both ends, so a run on a
- * split boundary is listed twice and de-duped by id.
+ * Lists every run created in `[since, until]`, newest first, halving any range that matches more
+ * than {@link RUN_LISTING_CAP} runs until each slice fits. Ranges are inclusive at both ends, so a
+ * run on a split boundary is de-duped by id.
  */
 export async function listRunsWindowed(
   listRange: RangeLister,
@@ -133,9 +131,8 @@ export async function getRun(octokit: Octokit, ref: RepoRef, runId: number): Pro
 }
 
 /**
- * Start times of every attempt of `run`, oldest first (index 0 is attempt 1). Attempt 1 starts
- * when the run was created; later attempts are fetched one call each, so a run that was never
- * re-run costs no extra requests.
+ * Start times of every attempt of `run`, oldest first: attempt 1 starts at the run's creation,
+ * and each later attempt costs one request.
  */
 export async function listAttemptStarts(
   octokit: Octokit,
@@ -155,12 +152,7 @@ export async function listAttemptStarts(
   return starts;
 }
 
-/**
- * The attempt an artifact belongs to: the latest attempt that had started when the artifact was
- * created. A partial re-run carries the untouched jobs' artifacts over from earlier attempts, so
- * the run's current `run_attempt` would mislabel them and double-count every carried-over test
- * under a second dedup key.
- */
+/** The attempt that uploaded an artifact: the latest one that had started when it was created. */
 export function attemptForArtifact(createdAt: string, attemptStarts: string[]): number {
   let attempt = 1;
   for (let i = 1; i < attemptStarts.length; i++) {

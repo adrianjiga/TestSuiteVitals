@@ -14,9 +14,8 @@ const { version } = JSON.parse(
 ) as { version: string };
 
 /**
- * Prints a command's failure as one line and exits 1, instead of citty's default of dumping the
- * stack trace — an invalid flag or a missing repo is a user error, not a crash. Set
- * `SUITEVITALS_DEBUG=1` to get the stack back when reporting a bug.
+ * Prints a command's failure as one `Error: …` line and exits 1. `SUITEVITALS_DEBUG=1` prints
+ * the full error instead.
  */
 function withCleanErrors<T extends ArgsDef>(command: CommandDef<T>): CommandDef<T> {
   const { run } = command;

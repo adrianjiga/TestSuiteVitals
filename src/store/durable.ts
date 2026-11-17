@@ -1,6 +1,6 @@
 import { open } from "node:fs/promises";
 
-/** Writes `data` to `path` and fsyncs it before returning, so a later rename publishes it whole. */
+/** Writes `data` to `path` and fsyncs it before returning. */
 export async function writeFileDurable(path: string, data: string | Uint8Array): Promise<void> {
   const handle = await open(path, "w");
   try {
