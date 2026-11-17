@@ -183,7 +183,7 @@ suitevitals report --repo <owner/name> [options]
 | `--data-dir <path>` | Directory holding the NDJSON partitions (default `data`). |
 | `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
 | `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |
-| `--since <Nd\|ISO>` | Only include runs in the window (e.g. `30d`, `12h`, or a timestamp). |
+| `--since <Nd\|ISO>` | Only include runs in the window: a span (`30d`, `12h`) or an ISO date/timestamp (`2026-06-01`). |
 | `--branch <name>` | Only include runs on this branch (exact match, e.g. `main`). |
 | `--workflow <glob>` | Only include runs of workflows matching this glob (`*` wildcard). |
 | `--limit <n>` | Show at most this many ranked tests (default 20). |

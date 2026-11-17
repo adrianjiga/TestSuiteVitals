@@ -62,4 +62,14 @@ describe("parseSince", () => {
     expect(parseSince("2026-06-01T00:00:00Z", now)?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
     expect(() => parseSince("last week", now)).toThrow(/Invalid --since/);
   });
+
+  it("accepts a bare ISO date", () => {
+    expect(parseSince("2026-06-01", now)?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+  });
+
+  it("rejects a bare number instead of reading it as a date", () => {
+    for (const value of ["7", "30", "2025", "6/1"]) {
+      expect(() => parseSince(value, now)).toThrow(/Invalid --since/);
+    }
+  });
 });
