@@ -8,6 +8,11 @@ describe("compileMatrixPattern", () => {
     expect(compileMatrixPattern(CYPRESS)).toBeInstanceOf(RegExp);
   });
 
+  it("rejects a pattern whose named group is escaped or inside a character class", () => {
+    expect(() => compileMatrixPattern("results-\\(?<browser>")).toThrow(/named group/);
+    expect(() => compileMatrixPattern("[(?<x>)]")).toThrow(/named group/);
+  });
+
   it("rejects a pattern with no named groups", () => {
     // Group names *are* the matrix dimensions, so a pattern without them cannot produce a
     // cell — far more likely a mistake than an intent.

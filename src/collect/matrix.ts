@@ -34,7 +34,8 @@ export function compileMatrixPattern(pattern: string, where = "matrixFromArtifac
       `Invalid ${where}: not a valid regular expression (${(error as Error).message}).`,
     );
   }
-  if (!/\(\?<[A-Za-z_$][\w$]*>/.test(pattern)) {
+  const groups = new RegExp(`${pattern}|`).exec("")?.groups;
+  if (!groups || Object.keys(groups).length === 0) {
     throw new Error(
       `Invalid ${where}: the pattern must declare at least one named group, ` +
         `e.g. "results-(?<browser>[^-]+)" — group names become the matrix dimensions.`,
