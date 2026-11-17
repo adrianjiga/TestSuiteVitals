@@ -34,6 +34,11 @@ dimension, never identity**. "Matrix joins identity" is a **report-time** groupi
 **Why:** one canonical history per test; changing the grouping setting never orphans
 collected data.
 
+`file` is normalized before hashing (`normalizeTestFile`): `\` becomes `/` and a GitHub-hosted
+runner's workspace root (`/home/runner/work/<repo>/<repo>/`, `D:\a\<repo>\<repo>\`, macOS
+equivalent) is stripped, so emitters that write absolute or OS-native paths still give a test one
+id across runner OSes. Mochawesome's relative `file` is preferred over Mocha's absolute `fullFile`.
+
 **Corollary — `file` must be a location, never a run label.** Identity is only stable if both
 inputs are. Adapters therefore resolve `file` from the most location-like attribute available
 and never from something that varies with *how the run was invoked*. The JUnit adapter learned

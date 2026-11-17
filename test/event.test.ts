@@ -4,6 +4,7 @@ import {
   deriveFlaky,
   deriveStatus,
   EVENT_SCHEMA_VERSION,
+  normalizeTestFile,
   type ParsedTest,
   type RunContext,
   type TestAttempt,
@@ -94,5 +95,49 @@ describe("buildEvent", () => {
       { framework: "playwright", run, matrix: {}, collected_at: "2026-06-23T12:00:00Z" },
     );
     expect(event.matrix).toEqual({ project: "tablet" });
+  });
+});
+
+describe("normalizeTestFile", () => {
+  it("strips GitHub-hosted runner workspace roots so every OS yields the same path", () => {
+    expect(normalizeTestFile("/home/runner/work/app/app/test/login.spec.js")).toBe(
+      "test/login.spec.js",
+    );
+    expect(normalizeTestFile("/Users/runner/work/app/app/test/login.spec.js")).toBe(
+      "test/login.spec.js",
+    );
+    expect(normalizeTestFile("D:\\a\\app\\app\\test\\login.spec.js")).toBe("test/login.spec.js");
+  });
+
+  it("leaves relative paths and class names unchanged, so existing ids are stable", () => {
+    expect(normalizeTestFile("cypress/e2e/buttons.cy.ts")).toBe("cypress/e2e/buttons.cy.ts");
+    expect(normalizeTestFile("com.example.LoginTest")).toBe("com.example.LoginTest");
+  });
+
+  it("gives a test the same id whichever runner reported it", () => {
+    const run = {
+      provider: "github",
+      repo: "o/r",
+      run_id: 1,
+      run_attempt: 1,
+      workflow: "ci",
+      branch: "main",
+      sha: "abc",
+      trigger: "push",
+      started_at: "2026-06-23T10:00:00Z",
+    } as const;
+    const parsed = (file: string): ParsedTest => ({
+      file,
+      title_path: ["logs in"],
+      status: "passed",
+      flaky: false,
+      duration_ms: 1,
+      attempts: [],
+    });
+    const context = { framework: "mocha", run, matrix: {}, collected_at: "2026-06-23T11:00:00Z" };
+    const linux = buildEvent(parsed("/home/runner/work/app/app/test/a.js"), context);
+    const windows = buildEvent(parsed("D:\\a\\app\\app\\test\\a.js"), context);
+    expect(windows.id).toBe(linux.id);
+    expect(linux.id).toBe(testId("test/a.js", ["logs in"]));
   });
 });
