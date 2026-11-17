@@ -23,6 +23,7 @@ import type { RepoRef } from "../github/repo.js";
 import {
   classifyRuns,
   getRun,
+  listAttemptStarts,
   listRunsSince,
   missingPendingIds,
   type WorkflowRun,
@@ -387,6 +388,7 @@ function makeArtifactFetcher(octokit: GitHubClient["octokit"], ref: RepoRef): Ar
   return {
     list: (runId) => listRunArtifacts(octokit, ref, runId),
     download: (artifactId) => downloadArtifactZip(octokit, ref, artifactId),
+    attemptStarts: (run) => listAttemptStarts(octokit, ref, run),
   };
 }
 

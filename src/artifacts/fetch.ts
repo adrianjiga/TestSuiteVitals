@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import pLimit from "p-limit";
 import { type ArtifactMeta, partitionArtifacts } from "../github/artifacts.js";
-import type { WorkflowRun } from "../github/runs.js";
+import { attemptForArtifact, type WorkflowRun } from "../github/runs.js";
 import { ArchiveTooLargeError, DEFAULT_MAX_EXTRACT_MB, extractZipNested } from "./extract.js";
 
 /** Default number of runs fetched in parallel; balances throughput against rate limits. */
@@ -14,6 +14,8 @@ export const DEFAULT_MAX_ARTIFACT_MB = 100;
 export interface ArtifactFetcher {
   list(runId: number): Promise<ArtifactMeta[]>;
   download(artifactId: number): Promise<Uint8Array>;
+  /** Start time of each attempt of `run`, oldest first (index 0 is attempt 1). */
+  attemptStarts(run: WorkflowRun): Promise<string[]>;
 }
 
 /**
@@ -25,6 +27,8 @@ export interface ArtifactFetcher {
 export interface ExtractedFile {
   path: string;
   artifact: string;
+  /** The run attempt that uploaded the artifact (see {@link attemptForArtifact}). */
+  attempt: number;
 }
 
 /** Extracted report files for a single run. */
@@ -204,12 +208,17 @@ async function fetchRun(
   const files: ExtractedFile[] = [];
   let failed = 0;
   if (!dryRun) {
+    const attemptStarts = run.run_attempt > 1 ? await fetcher.attemptStarts(run) : [];
     for (const artifact of [...toDownload, ...toSniff]) {
+      const attempt =
+        attemptStarts.length > 0
+          ? attemptForArtifact(artifact.created_at, attemptStarts)
+          : run.run_attempt;
       const zip = await fetcher.download(artifact.id);
       const dest = join(workdir, String(run.run_id), String(artifact.id));
       try {
         const paths = await extractZipNested(zip, dest, 2, maxExtractBytes);
-        files.push(...paths.map((path) => ({ path, artifact: artifact.name })));
+        files.push(...paths.map((path) => ({ path, artifact: artifact.name, attempt })));
       } catch (error) {
         // A zip bomb (declared size past the extraction budget) is counted as oversized and
         // skipped — surfaced in the summary, never allowed to OOM the whole collection (F1).

@@ -42,8 +42,9 @@ One NDJSON record per test, per workflow run, per matrix cell.
   consumers never parse the array.
 - `flaky` (per-event) — passed after at least one failed attempt.
 - `run.run_attempt` — a human clicking "re-run failed jobs" is a signal the test reporter
-  never sees. GitHub may overwrite artifacts on re-run, so deep per-attempt artifact history
-  is not reliably fetchable; record the attempt number and parse what exists.
+  never sees. It is the attempt that *uploaded* the report's artifact, not the run's latest
+  attempt: a partial re-run carries earlier attempts' artifacts over, and stamping those with
+  the new attempt would double-count them under a second dedup key.
 - `error` — redacted and truncated per [D6](decisions.md#d6--error-storage-redacted--truncated-by-default);
   `fingerprint` per [D7](decisions.md#d7--failure-clustering-stack-frame-fingerprint).
 

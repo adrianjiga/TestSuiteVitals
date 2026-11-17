@@ -7,6 +7,8 @@ export interface ArtifactMeta {
   id: number;
   name: string;
   size_bytes: number;
+  /** ISO creation time; places the artifact in the run attempt that uploaded it. */
+  created_at: string;
   /** GitHub has purged the blob (retention elapsed); it can no longer be downloaded. */
   expired: boolean;
 }
@@ -79,6 +81,7 @@ function normalize(artifact: ListedArtifact): ArtifactMeta {
     id: artifact.id,
     name: artifact.name,
     size_bytes: artifact.size_in_bytes,
+    created_at: artifact.created_at ?? "",
     expired: artifact.expired,
   };
 }

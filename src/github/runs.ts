@@ -89,6 +89,46 @@ export async function getRun(octokit: Octokit, ref: RepoRef, runId: number): Pro
 }
 
 /**
+ * Start times of every attempt of `run`, oldest first (index 0 is attempt 1). Attempt 1 starts
+ * when the run was created; later attempts are fetched one call each, so a run that was never
+ * re-run costs no extra requests.
+ */
+export async function listAttemptStarts(
+  octokit: Octokit,
+  ref: RepoRef,
+  run: WorkflowRun,
+): Promise<string[]> {
+  const starts = [run.created_at];
+  for (let attempt = 2; attempt <= run.run_attempt; attempt++) {
+    const { data } = await octokit.rest.actions.getWorkflowRunAttempt({
+      owner: ref.owner,
+      repo: ref.repo,
+      run_id: run.run_id,
+      attempt_number: attempt,
+    });
+    starts.push(data.run_started_at ?? data.created_at);
+  }
+  return starts;
+}
+
+/**
+ * The attempt an artifact belongs to: the latest attempt that had started when the artifact was
+ * created. A partial re-run carries the untouched jobs' artifacts over from earlier attempts, so
+ * the run's current `run_attempt` would mislabel them and double-count every carried-over test
+ * under a second dedup key.
+ */
+export function attemptForArtifact(createdAt: string, attemptStarts: string[]): number {
+  let attempt = 1;
+  for (let i = 1; i < attemptStarts.length; i++) {
+    const start = attemptStarts[i];
+    if (start !== undefined && start <= createdAt) {
+      attempt = i + 1;
+    }
+  }
+  return attempt;
+}
+
+/**
  * Tracked pending-run ids that the window listing did not surface — runs created before the
  * window start whose completion the `created`-filtered listing can never see (D12). These are
  * re-fetched by id so the watermark passing them never loses them.

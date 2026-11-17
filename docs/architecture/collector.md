@@ -202,11 +202,14 @@ filters on `report` and `dashboard`, the `prune` retention command, and monorepo
 ### Known gaps
 
 Run listing filters by *creation* time (`created>=…`), and a GitHub re-run keeps the original
-run's `created_at`. Two consequences: a re-run of a run created before the current window is
-not seen (its new attempt is collected only if a later `--hours-back` backfill covers the
-creation date), and when such a backfill does re-collect a re-run, artifacts persisted from
-attempt 1 are recorded under the new attempt number — a different dedup key, so those events
-can double-count. Both are edge cases of the `rerun` signal, not the core pass/fail history.
+run's `created_at`, so a re-run of a run created before the current window is not seen (its new
+attempt is collected only if a later `--hours-back` backfill covers the creation date).
+
+A partial re-run ("re-run failed jobs") carries the untouched jobs' artifacts over, so a run's
+artifact list mixes attempts. Each artifact is attributed to the latest attempt that had started
+when it was created (`attemptForArtifact`, one `GET …/attempts/{n}` per extra attempt, only for
+re-run runs), and its events carry that attempt — never the run's current one, which would put
+carried-over results under a second dedup key and double-count them.
 
 The collector is **v1 feature-complete (M1–M5)**. M1 was the idempotent walking skeleton; M2 added
 the Playwright blob and mochawesome adapters, live fetch progress, `p-limit` concurrency,

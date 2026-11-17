@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { classifyRuns, missingPendingIds, type WorkflowRun } from "../src/github/runs.js";
+import {
+  attemptForArtifact,
+  classifyRuns,
+  missingPendingIds,
+  type WorkflowRun,
+} from "../src/github/runs.js";
 
 function run(overrides: Partial<WorkflowRun>): WorkflowRun {
   return {
@@ -50,5 +55,22 @@ describe("missingPendingIds", () => {
 
   it("is empty when nothing was tracked", () => {
     expect(missingPendingIds([], [run({ run_id: 1 })])).toEqual([]);
+  });
+});
+
+describe("attemptForArtifact", () => {
+  const starts = ["2026-11-11T14:55:09Z", "2026-11-11T16:29:37Z", "2026-11-12T09:00:00Z"];
+
+  it("keeps an artifact carried over from a partial re-run in the attempt that uploaded it", () => {
+    expect(attemptForArtifact("2026-11-11T15:00:02Z", starts)).toBe(1);
+  });
+
+  it("places an artifact in the latest attempt started before it was created", () => {
+    expect(attemptForArtifact("2026-11-11T16:40:00Z", starts)).toBe(2);
+    expect(attemptForArtifact("2026-11-12T09:10:00Z", starts)).toBe(3);
+  });
+
+  it("treats a single-attempt run as attempt 1", () => {
+    expect(attemptForArtifact("2026-11-11T15:00:02Z", ["2026-11-11T14:55:09Z"])).toBe(1);
   });
 });
