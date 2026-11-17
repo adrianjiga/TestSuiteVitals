@@ -32,7 +32,7 @@ no instrumentation. Node >=24, ESM.
   and the tag matches `package.json`, runs every gate, packs and boot-checks the tarball; a
   `publish` job (the only one with `id-token: write`) publishes that tarball with
   `--ignore-scripts` via OIDC trusted publishing with provenance (no npm token). A `-` in the tag
-  publishes under `--tag next`.
+  publishes under `--tag next`. A version already on npm is skipped with a notice, not failed.
 
 ## Architecture
 

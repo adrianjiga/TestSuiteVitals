@@ -122,4 +122,6 @@ Releases are maintainers-only:
      checks that it boots and reports the tagged version, and uploads it.
    - **Publish** downloads that tarball and publishes it with scripts disabled, through trusted
      publishing (OIDC) with provenance. Only this job can request the publish token, and no
-     project or dependency code runs in it. No npm token is stored in the repository.
+     project or dependency code runs in it. No npm token is stored in the repository. If that
+     version is already on npm (for example after a manual publish), it logs a notice and skips
+     publishing instead of failing.
