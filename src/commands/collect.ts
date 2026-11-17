@@ -39,7 +39,7 @@ import {
 import { acquireDataDirLock, acquireLock } from "../state/lock.js";
 import { loadState, repoState, type State, saveState } from "../state/state.js";
 import { type AppendResult, appendEvents } from "../store/ndjson.js";
-import { parseCommaList, parseMatrixFlag } from "./flags.js";
+import { parseCommaList, parseMatrixFlag, parseWorkflowFlag } from "./flags.js";
 import { parseRepoFlags } from "./repo-flags.js";
 
 const DEFAULT_STATE_PATH = "state.json";
@@ -158,6 +158,7 @@ export const collectCommand = defineCommand({
     const maxArtifactMb = parseMaxArtifactMb(args["max-artifact-mb"]);
     const maxRuns = parsePositiveIntFlag(args["max-runs"], "--max-runs");
     const rerunLookbackHours = parseRerunLookback(args["rerun-lookback-hours"]);
+    const workflow = parseWorkflowFlag(args.workflow);
     const excludeTriggers = parseCommaList(
       args["exclude-trigger"],
       "--exclude-trigger",
@@ -176,7 +177,7 @@ export const collectCommand = defineCommand({
       cliRepos: parseRepoFlags(rawArgs),
       cliHoursBack: hoursBack,
       cliConcurrency: concurrency,
-      cliWorkflow: args.workflow,
+      cliWorkflow: workflow,
       cliExcludeTriggers: excludeTriggers,
       cliMatrixFromArtifact: matrixFromArtifact,
       cliExcludeArtifacts: excludeArtifacts,

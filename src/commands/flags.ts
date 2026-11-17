@@ -19,6 +19,17 @@ export function parseCommaList(
   return items;
 }
 
+/**
+ * Validates `--workflow`. An empty glob matches no run, so every run would be excluded by policy
+ * and the watermark would pass them all.
+ */
+export function parseWorkflowFlag(value: string | undefined): string | undefined {
+  if (value !== undefined && value.trim() === "") {
+    throw new Error(`Invalid --workflow "${value}": expected a workflow name glob.`);
+  }
+  return value;
+}
+
 /** Validates `--matrix-from-artifact` the same way a config file's pattern is checked. */
 export function parseMatrixFlag(value: string | undefined): string | undefined {
   if (value === undefined) {

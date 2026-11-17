@@ -14,6 +14,7 @@ describe("collect flag validation", () => {
   it.each([
     [["--exclude-trigger", ","], 'Invalid --exclude-trigger ",": expected trigger event names.'],
     [["--exclude-artifact", ","], 'Invalid --exclude-artifact ",": expected artifact name globs.'],
+    [["--workflow", ""], 'Invalid --workflow "": expected a workflow name glob.'],
     [["--matrix-from-artifact", "(?<x>"], "Invalid --matrix-from-artifact: not a valid regular"],
   ])("rejects %j with its own flag name before authenticating", (flags, message) => {
     const { status, stderr } = collect(...flags);
