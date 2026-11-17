@@ -58,24 +58,24 @@ suitevitals collect --repo <owner/a> --repo <owner/b>   # multiple repos
 suitevitals collect --config repos.json                 # repos from a config file
 ```
 
-| Option | Description |
-| --- | --- |
-| `--repo <owner/name>` | Repository to collect from; repeat the flag for multiple repos. |
-| `--config <path>` | JSON file listing repos and per-repo overrides (see below). |
-| `--token <token>` | GitHub token; overrides `GITHUB_TOKEN` and the `gh` CLI. |
-| `--hours-back <n>` | Backfill window in hours; widens past the stored watermark, never narrows it. To skip a long gap on purpose, delete the repo's entry from the state file first. |
-| `--state-file <path>` | Path to the state file (default `state.json`). |
-| `--data-dir <path>` | Directory for the NDJSON event partitions (default `data`). |
-| `--concurrency <n>` | Number of runs to fetch in parallel (default 5). |
-| `--workflow <glob>` | Only collect runs of workflows matching this glob (`*` wildcard; default all). |
-| `--exclude-trigger <list>` | Skip runs fired by these events (comma-separated, e.g. `pull_request`). |
-| `--max-runs <n>` | Process at most this many completed runs per repo; the rest resume next run. |
-| `--rerun-lookback-hours <n>` | Re-list runs this far back to catch re-runs of older runs; `0` disables (default 48). |
-| `--exclude-artifact <list>` | Skip artifacts whose name matches these globs (comma-separated). Dropped before download. |
-| `--matrix-from-artifact <regex>` | Regex with named groups read from each artifact name; the group names become the matrix dimensions. |
-| `--max-artifact-mb <n>` | Size cap when sniffing unnamed artifacts for reports (default 100). |
-| `--full-errors` | Store full error messages without redaction or truncation. |
-| `--dry-run` | Show what would be fetched without writing any data. |
+| Option                           | Description                                                                                                                                                     |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--repo <owner/name>`            | Repository to collect from; repeat the flag for multiple repos.                                                                                                 |
+| `--config <path>`                | JSON file listing repos and per-repo overrides (see below).                                                                                                     |
+| `--token <token>`                | GitHub token; overrides `GITHUB_TOKEN` and the `gh` CLI.                                                                                                        |
+| `--hours-back <n>`               | Backfill window in hours; widens past the stored watermark, never narrows it. To skip a long gap on purpose, delete the repo's entry from the state file first. |
+| `--state-file <path>`            | Path to the state file (default `state.json`).                                                                                                                  |
+| `--data-dir <path>`              | Directory for the NDJSON event partitions (default `data`).                                                                                                     |
+| `--concurrency <n>`              | Number of runs to fetch in parallel (default 5).                                                                                                                |
+| `--workflow <glob>`              | Only collect runs of workflows matching this glob (`*` wildcard; default all).                                                                                  |
+| `--exclude-trigger <list>`       | Skip runs fired by these events (comma-separated, e.g. `pull_request`).                                                                                         |
+| `--max-runs <n>`                 | Process at most this many completed runs per repo; the rest resume next run.                                                                                    |
+| `--rerun-lookback-hours <n>`     | Re-list runs this far back to catch re-runs of older runs; `0` disables (default 48).                                                                           |
+| `--exclude-artifact <list>`      | Skip artifacts whose name matches these globs (comma-separated). Dropped before download.                                                                       |
+| `--matrix-from-artifact <regex>` | Regex with named groups read from each artifact name; the group names become the matrix dimensions.                                                             |
+| `--max-artifact-mb <n>`          | Size cap when sniffing unnamed artifacts for reports (default 100).                                                                                             |
+| `--full-errors`                  | Store full error messages without redaction or truncation.                                                                                                      |
+| `--dry-run`                      | Show what would be fetched without writing any data.                                                                                                            |
 
 At least one repo is required, via `--repo` (repeatable), `--config`, or both. On the first
 run for a repo, collection defaults to the last 72 hours; afterwards it resumes from the
@@ -99,7 +99,7 @@ truncated to a budget that holds even for single-line dumps; `--full-errors` byp
 ### Matrix cells from artifact names
 
 Playwright blob reports carry their own matrix (the project name). **JUnit and mochawesome carry
-none** — but a CI matrix job uploads its results under its own artifact name, so the name *is* the
+none** — but a CI matrix job uploads its results under its own artifact name, so the name _is_ the
 cell.
 
 This is not cosmetic. The dedup key is `(run_id, run_attempt, id, matrix)`, so with no matrix every
@@ -128,7 +128,7 @@ than an inference, and it keeps distinct cells distinct. An artifact that does n
 configured pattern falls back to the same opaque form rather than being dropped — a report is
 evidence, and discarding it because a pattern was mistyped is the exact failure this prevents.
 
-**Exclude roll-up artifacts.** A pipeline that uploads per-cell reports *and* a merged report of the
+**Exclude roll-up artifacts.** A pipeline that uploads per-cell reports _and_ a merged report of the
 same results would count every test twice — once under its real cell, once under the roll-up. Drop
 the roll-up by name:
 
@@ -186,18 +186,18 @@ Once events are collected, rank a repo's tests by flakiness:
 suitevitals report --repo <owner/name> [options]
 ```
 
-| Option | Description |
-| --- | --- |
-| `--repo <owner/name>` | Repository to report on (required; one repo per run). |
-| `--data-dir <path>` | Directory holding the NDJSON partitions (default `data`). |
-| `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
-| `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |
-| `--since <Nd\|ISO>` | Only include runs in the window: a span (`30d`, `12h`) or an ISO date/timestamp (`2026-06-01`). |
-| `--branch <name>` | Only include runs on this branch (exact match, e.g. `main`). |
-| `--workflow <glob>` | Only include runs of workflows matching this glob (`*` wildcard). |
-| `--limit <n>` | Show at most this many ranked tests (default 20). |
-| `--all` | Also show tests below the min-runs threshold. |
-| `--json` | Emit JSON instead of the table. |
+| Option                | Description                                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `--repo <owner/name>` | Repository to report on (required; one repo per run).                                           |
+| `--data-dir <path>`   | Directory holding the NDJSON partitions (default `data`).                                       |
+| `--by-matrix`         | Rank each (test, matrix cell) separately instead of collapsing cells.                           |
+| `--min-runs <n>`      | Minimum runs for a test to be ranked (default 5).                                               |
+| `--since <Nd\|ISO>`   | Only include runs in the window: a span (`30d`, `12h`) or an ISO date/timestamp (`2026-06-01`). |
+| `--branch <name>`     | Only include runs on this branch (exact match, e.g. `main`).                                    |
+| `--workflow <glob>`   | Only include runs of workflows matching this glob (`*` wildcard).                               |
+| `--limit <n>`         | Show at most this many ranked tests (default 20).                                               |
+| `--all`               | Also show tests below the min-runs threshold.                                                   |
+| `--json`              | Emit JSON instead of the table.                                                                 |
 
 ```
 Flaky tests · owner/repo · 3 tests
@@ -209,7 +209,7 @@ Flaky tests · owner/repo · 3 tests
 1 test(s) below the min-runs threshold hidden (--all to show).
 ```
 
-The **score** (0–100) treats flakiness as *inconsistency*: it blends pass-after-retry rate,
+The **score** (0–100) treats flakiness as _inconsistency_: it blends pass-after-retry rate,
 same-commit intermittence, failure-mode diversity, and workflow re-runs. A test that always
 passes — or always fails the same way (broken, not flaky) — scores near zero. The columns show
 the signals behind the score so the ranking is explainable, not a magic number. Scores are
@@ -224,16 +224,16 @@ ranked by flake score, each with a heartbeat sparkline of its recent run outcome
 suitevitals dashboard --repo <owner/name> [-o out.html] [--by-matrix] [--min-runs <n>] [--since <Nd|ISO>]
 ```
 
-| Option | Description |
-| --- | --- |
-| `--repo <owner/name>` | Repository to report on (required; one repo per run). |
-| `-o, --output <path>` | Output HTML file (default `<owner>__<repo>.html`). |
-| `--data-dir <path>` | Directory holding the NDJSON partitions (default `data`). |
-| `--by-matrix` | Rank each (test, matrix cell) separately instead of collapsing cells. |
-| `--min-runs <n>` | Minimum runs for a test to be ranked (default 5). |
-| `--since <Nd\|ISO>` | Only include runs in the window (e.g. `30d`). |
-| `--branch <name>` | Only include runs on this branch (exact match, e.g. `main`). |
-| `--workflow <glob>` | Only include runs of workflows matching this glob (`*` wildcard). |
+| Option                | Description                                                           |
+| --------------------- | --------------------------------------------------------------------- |
+| `--repo <owner/name>` | Repository to report on (required; one repo per run).                 |
+| `-o, --output <path>` | Output HTML file (default `<owner>__<repo>.html`).                    |
+| `--data-dir <path>`   | Directory holding the NDJSON partitions (default `data`).             |
+| `--by-matrix`         | Rank each (test, matrix cell) separately instead of collapsing cells. |
+| `--min-runs <n>`      | Minimum runs for a test to be ranked (default 5).                     |
+| `--since <Nd\|ISO>`   | Only include runs in the window (e.g. `30d`).                         |
+| `--branch <name>`     | Only include runs on this branch (exact match, e.g. `main`).          |
+| `--workflow <glob>`   | Only include runs of workflows matching this glob (`*` wildcard).     |
 
 The output is a single HTML file with inline CSS and no runtime dependencies — open it, screenshot
 it, commit it, or host it anywhere.

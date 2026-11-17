@@ -35,15 +35,15 @@ silently.
    collected (`rerun_attempts`); tracked `pending_runs` the listing returns are kept, and the rest
    are re-checked by id.
 3. **Filter & classify** — `--workflow`/`--exclude-trigger` drop runs by policy (the watermark
-   *may* pass those, or excluding a busy workflow would stall it forever); the rest classify as
+   _may_ pass those, or excluding a busy workflow would stall it forever); the rest classify as
    completed → collect, in-progress/queued → `pending_runs` (the watermark does not advance
    past them). `--max-runs` then caps the completed set oldest-first; the watermark never
    passes a deferred run, so the newer remainder is collected next invocation.
 4. **Fetch artifacts** (tiered, [D9](decisions.md#d9--artifact-discovery-tiered)) into a temp
-   dir; expired artifacts are counted and reported. A report match whose *compressed* size
+   dir; expired artifacts are counted and reported. A report match whose _compressed_ size
    already exceeds the extraction budget is skipped (as oversized) before download, so it can
    never balloon memory. Extraction enforces a decompressed-size budget (default 500 MB,
-   checked from the zip's declared entry sizes *before* inflating, and shared by every archive
+   checked from the zip's declared entry sizes _before_ inflating, and shared by every archive
    nested inside the artifact), so a zip bomb is counted as oversized and skipped, never
    inflated; any other extraction failure (corrupt or hostile archive) costs that one artifact,
    with a warning — download errors still abort the repo, since they are transient and the
@@ -99,7 +99,7 @@ the collection window (watermark / `--hours-back` / 72h default), lists workflow
 that window plus the re-run lookback, classifies them into completed vs. pending, and for the completed runs performs
 tiered artifact discovery ([D9](decisions.md#d9--artifact-discovery-tiered)): list
 artifact names/sizes (tier 1), download the report-glob matches and extract them into a temp dir
-(tier 2), and — only when a run has *no* name match — download and extract its remaining artifacts
+(tier 2), and — only when a run has _no_ name match — download and extract its remaining artifacts
 under `--max-artifact-mb` (default 100) so a report uploaded under an unexpected name is still found
 (tier 3); the parse step's content sniff discards anything that is not a report, and oversized
 candidates are counted, never silently dropped. Expired artifacts are likewise counted.
@@ -189,7 +189,7 @@ tolerates >1 MB manifests (the contents API returns `encoding: "none"` for those
 
 A second hardening pass (2026-07-18) closed what a full-project security review surfaced.
 Report artifacts whose compressed size already exceeds the extraction budget are skipped (and
-counted as oversized) *before* download; a corrupt or hostile archive, and an unparseable
+counted as oversized) _before_ download; a corrupt or hostile archive, and an unparseable
 report file, cost only that artifact or file (download errors still abort the repo — they are
 transient, and aborting before the watermark advances is what makes them safe to retry); one
 repo's failure no longer stops a multi-repo run. Tracked `pending_runs` are now genuinely
@@ -215,7 +215,7 @@ filters on `report` and `dashboard`, the `prune` retention command, and monorepo
 
 ### Known gaps
 
-Run listing filters by *creation* time (`created>=…`), and a GitHub re-run keeps the original
+Run listing filters by _creation_ time (`created>=…`), and a GitHub re-run keeps the original
 run's `created_at`, so the window past the watermark never shows a new attempt of an older run.
 Listing therefore reaches `--rerun-lookback-hours` (default 48) behind the window start
 (`src/collect/rerun.ts`); a run from that stretch is collected only when its `run_attempt` is
