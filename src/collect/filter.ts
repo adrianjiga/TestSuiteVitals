@@ -23,12 +23,9 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/**
- * Case-insensitive glob match where `*` matches any span and every other character is literal;
- * spaces around the pattern are ignored.
- */
+/** Case-insensitive glob match where `*` matches any span; every other character is literal. */
 export function matchesGlob(pattern: string, value: string): boolean {
-  const regex = new RegExp(`^${pattern.trim().split("*").map(escapeRegExp).join(".*")}$`, "i");
+  const regex = new RegExp(`^${pattern.split("*").map(escapeRegExp).join(".*")}$`, "i");
   return regex.test(value);
 }
 

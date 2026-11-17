@@ -22,7 +22,7 @@ describe("parseWorkflowFlag", () => {
     expect(() => parseWorkflowFlag(" ")).toThrow(
       "Invalid --workflow: expected a non-empty string.",
     );
-    expect(parseWorkflowFlag("e2e-*")).toBe("e2e-*");
+    expect(parseWorkflowFlag(" e2e-* ")).toBe("e2e-*");
     expect(parseWorkflowFlag(undefined)).toBeUndefined();
   });
 });

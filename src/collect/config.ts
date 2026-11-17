@@ -213,7 +213,7 @@ export function optionalString(value: unknown, where: string): string | undefine
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`Invalid ${where}: expected a non-empty string.`);
   }
-  return value;
+  return value.trim();
 }
 
 /**
@@ -222,10 +222,10 @@ export function optionalString(value: unknown, where: string): string | undefine
  * after the network work is already done.
  */
 export function optionalPattern(value: unknown, where: string): string | undefined {
-  const pattern = optionalString(value, where);
-  if (pattern === undefined) {
+  if (optionalString(value, where) === undefined) {
     return undefined;
   }
+  const pattern = value as string;
   compileMatrixPattern(pattern, where);
   return pattern;
 }
@@ -241,5 +241,5 @@ function optionalStringArray(value: unknown, where: string): string[] | undefine
   ) {
     throw new Error(`Invalid ${where}: expected an array of non-empty strings.`);
   }
-  return value as string[];
+  return (value as string[]).map((item) => item.trim());
 }
