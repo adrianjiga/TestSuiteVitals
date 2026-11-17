@@ -120,7 +120,8 @@ normalized events. Implemented adapters:
   retries; non-JUnit XML
   (e.g. TestNG's `testng-results.xml`) is skipped.
 - **Playwright blob** (`report.jsonl` teleReporter stream) — builds the suite tree from
-  `onProject`/`onBegin`, groups `onTestEnd` retries into `attempts[]`, and derives the **matrix**
+  `onProject`/`onBegin`, groups `onTestEnd` retries into `attempts[]` (each judged against the
+  test's `expectedStatus`, so a `test.fail()` that fails passes), and derives the **matrix**
   from the project name. This is what sharded Playwright CI uploads.
 - **Mochawesome** (`stats` + `results` JSON) — Cypress/Mocha's per-spec report. Recursively walks
   the `suites`/`tests` tree, skipping the root node's title (the spec filename, not a describe).
