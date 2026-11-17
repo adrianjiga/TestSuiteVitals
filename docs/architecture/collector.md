@@ -11,7 +11,7 @@ suitevitals collect
   --workflow <glob>       only collect matching workflows (default: all)
   --exclude-trigger <l>   skip runs fired by these events (comma-separated)
   --max-runs <n>          cap completed runs per invocation, oldest first
-  --rerun-lookback-hours  re-list this far back for re-runs (default 168, 0 disables)
+  --rerun-lookback-hours  re-list this far back for re-runs (default 48, 0 disables)
   --max-artifact-mb <n>   default 100 (tier-3 sniff cap)
   --dry-run               show what would be fetched
   --full-errors
@@ -213,7 +213,7 @@ filters on `report` and `dashboard`, the `prune` retention command, and monorepo
 
 Run listing filters by *creation* time (`created>=…`), and a GitHub re-run keeps the original
 run's `created_at`, so the window past the watermark never shows a new attempt of an older run.
-Listing therefore reaches `--rerun-lookback-hours` (default 168) behind the window start
+Listing therefore reaches `--rerun-lookback-hours` (default 48) behind the window start
 (`src/collect/rerun.ts`); a run from that stretch is collected only when its `run_attempt` is
 above the highest attempt already collected for it (`rerun_attempts` in state, kept only for
 listed runs above attempt 1), so the lookback never re-downloads already-collected runs. A

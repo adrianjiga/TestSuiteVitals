@@ -6,7 +6,7 @@ import type { RepoState } from "../state/state.js";
  * the original `created_at`, so the `created`-filtered listing past the watermark never shows
  * a new attempt of an older run; re-runs of flaky tests land within days, not weeks.
  */
-export const DEFAULT_RERUN_LOOKBACK_HOURS = 168;
+export const DEFAULT_RERUN_LOOKBACK_HOURS = 48;
 
 /** Where run listing starts: the window start, or `lookbackHours` before now if earlier. */
 export function listingStart(windowSince: Date, now: Date, lookbackHours: number): Date {

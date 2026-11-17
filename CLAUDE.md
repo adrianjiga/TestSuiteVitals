@@ -70,7 +70,7 @@ filters (`src/collect/filter.ts`: `--workflow` glob, `--exclude-trigger` events)
 *policy* — the watermark may pass excluded runs, unlike pending ones, so filtering a busy workflow
 never stalls collection; `--exclude-trigger pull_request` is also the lever that keeps fork-PR
 artifacts out. A GitHub re-run keeps its run's `created_at`, so listing reaches
-`--rerun-lookback-hours` (default 168) behind the window and `src/collect/rerun.ts` keeps a run
+`--rerun-lookback-hours` (default 48) behind the window and `src/collect/rerun.ts` keeps a run
 from that stretch only when its attempt beats `rerun_attempts` in state; each artifact's events
 carry the attempt that uploaded it (`attemptForArtifact`), since partial re-runs carry earlier
 attempts' artifacts over. Run listing splits `created` ranges past GitHub's 1000-result cap
