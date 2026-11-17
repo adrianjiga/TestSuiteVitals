@@ -1,4 +1,4 @@
-import { compileMatrixPattern } from "../collect/matrix.js";
+import { optionalPattern, optionalString } from "../collect/config.js";
 
 /** Splits a comma-separated flag list (`--exclude-trigger`, `--exclude-artifact`). */
 export function parseCommaList(
@@ -19,27 +19,12 @@ export function parseCommaList(
   return items;
 }
 
-/**
- * Validates `--workflow`. An empty glob matches no run, so every run would be excluded by policy
- * and the watermark would pass them all.
- */
+/** Validates `--workflow` with the rule a config file's `workflow` follows. */
 export function parseWorkflowFlag(value: string | undefined): string | undefined {
-  if (value !== undefined && value.trim() === "") {
-    throw new Error(`Invalid --workflow "${value}": expected a workflow name glob.`);
-  }
-  return value;
+  return optionalString(value, "--workflow");
 }
 
-/** Validates `--matrix-from-artifact` the same way a config file's pattern is checked. */
+/** Validates `--matrix-from-artifact` with the rule a config file's pattern follows. */
 export function parseMatrixFlag(value: string | undefined): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value.trim() === "") {
-    throw new Error(
-      `Invalid --matrix-from-artifact "${value}": expected a regex with named groups.`,
-    );
-  }
-  compileMatrixPattern(value, "--matrix-from-artifact");
-  return value;
+  return optionalPattern(value, "--matrix-from-artifact");
 }

@@ -206,7 +206,7 @@ function optionalConcurrency(value: unknown, where: string): number | undefined 
   return value;
 }
 
-function optionalString(value: unknown, where: string): string | undefined {
+export function optionalString(value: unknown, where: string): string | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -221,7 +221,7 @@ function optionalString(value: unknown, where: string): string | undefined {
  * immediately with the offending key named — rather than at the first artifact, mid-collect,
  * after the network work is already done.
  */
-function optionalPattern(value: unknown, where: string): string | undefined {
+export function optionalPattern(value: unknown, where: string): string | undefined {
   const pattern = optionalString(value, where);
   if (pattern === undefined) {
     return undefined;

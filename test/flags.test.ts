@@ -19,7 +19,9 @@ describe("parseCommaList", () => {
 
 describe("parseWorkflowFlag", () => {
   it("rejects an empty glob, which would exclude every run", () => {
-    expect(() => parseWorkflowFlag(" ")).toThrow('Invalid --workflow " "');
+    expect(() => parseWorkflowFlag(" ")).toThrow(
+      "Invalid --workflow: expected a non-empty string.",
+    );
     expect(parseWorkflowFlag("e2e-*")).toBe("e2e-*");
     expect(parseWorkflowFlag(undefined)).toBeUndefined();
   });
@@ -28,7 +30,7 @@ describe("parseWorkflowFlag", () => {
 describe("parseMatrixFlag", () => {
   it("rejects an empty value, invalid regex, or a pattern without a named group", () => {
     expect(() => parseMatrixFlag("")).toThrow(
-      'Invalid --matrix-from-artifact "": expected a regex',
+      "Invalid --matrix-from-artifact: expected a non-empty string.",
     );
     expect(() => parseMatrixFlag("(?<browser>")).toThrow(/not a valid regular expression/);
     expect(() => parseMatrixFlag("results-.*")).toThrow(/at least one named group/);
