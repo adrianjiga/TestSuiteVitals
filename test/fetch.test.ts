@@ -296,4 +296,20 @@ describe("fetchReportArtifacts", () => {
     expect(fetcher.attemptStarts).not.toHaveBeenCalled();
     expect(reports[0]?.files[0]?.attempt).toBe(1);
   });
+
+  it("keeps the run's attempt for an artifact with no creation time", async () => {
+    const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => ["2026-06-23T10:00:00Z", "2026-06-23T11:00:00Z"]),
+      list: vi.fn(async () => [{ ...artifact(95, "junit-report"), created_at: "" }]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { reports } = await fetchReportArtifacts(
+      fetcher,
+      [{ ...run(1), run_attempt: 2 }],
+      workdir,
+    );
+
+    expect(reports[0]?.files[0]?.attempt).toBe(2);
+  });
 });

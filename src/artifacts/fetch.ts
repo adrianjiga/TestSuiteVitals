@@ -212,7 +212,7 @@ async function fetchRun(
     const attemptStarts = run.run_attempt > 1 ? await fetcher.attemptStarts(run) : [];
     for (const artifact of [...toDownload, ...toSniff]) {
       const attempt =
-        attemptStarts.length > 0
+        attemptStarts.length > 0 && artifact.created_at
           ? attemptForArtifact(artifact.created_at, attemptStarts)
           : run.run_attempt;
       const zip = await fetcher.download(artifact.id);
