@@ -9,7 +9,7 @@ const DEFAULT_DATA_DIR = "data";
 export const compactCommand = defineCommand({
   meta: {
     name: "compact",
-    description: "Compress closed-month partitions with zstd to reclaim disk (D2)",
+    description: "Compress closed-month partitions with zstd to reclaim disk",
   },
   args: {
     repo: {
