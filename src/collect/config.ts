@@ -140,6 +140,9 @@ export function resolveTargets(input: ResolveTargetsInput): CollectTarget[] {
     config,
     defaultConcurrency,
   } = input;
+  if (cliMatrixFromArtifact !== undefined) {
+    compileMatrixPattern(cliMatrixFromArtifact, "--matrix-from-artifact");
+  }
   const targets: CollectTarget[] = [];
   const seen = new Set<string>();
 

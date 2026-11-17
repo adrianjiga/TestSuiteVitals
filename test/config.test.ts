@@ -154,4 +154,16 @@ describe("resolveTargets", () => {
     expect(() => resolveTargets(base)).toThrow(/No repositories to collect/);
     expect(() => resolveTargets({ ...base, cliRepos: ["not-a-repo"] })).toThrow(/owner\/name/);
   });
+
+  it("rejects an invalid --matrix-from-artifact before any repo is collected", () => {
+    const input = { ...base, cliRepos: ["owner/name"] };
+    expect(() => resolveTargets({ ...input, cliMatrixFromArtifact: "(?<browser>" })).toThrow(
+      /Invalid --matrix-from-artifact: not a valid regular expression/,
+    );
+    expect(() => resolveTargets({ ...input, cliMatrixFromArtifact: "results-.*" })).toThrow(
+      /Invalid --matrix-from-artifact: the pattern must declare at least one named group/,
+    );
+    const [target] = resolveTargets({ ...input, cliMatrixFromArtifact: "r-(?<browser>\\w+)" });
+    expect(target?.matrixFromArtifact).toBe("r-(?<browser>\\w+)");
+  });
 });
