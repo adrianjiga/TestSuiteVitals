@@ -312,4 +312,16 @@ describe("fetchReportArtifacts", () => {
 
     expect(reports[0]?.files[0]?.attempt).toBe(2);
   });
+
+  it("skips the attempt lookup for a re-run with nothing to download", async () => {
+    const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => ["2026-06-23T10:00:00Z", "2026-06-23T11:00:00Z"]),
+      list: vi.fn(async () => [artifact(96, "old-report", true)]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    await fetchReportArtifacts(fetcher, [{ ...run(1), run_attempt: 3 }], workdir);
+
+    expect(fetcher.attemptStarts).not.toHaveBeenCalled();
+  });
 });

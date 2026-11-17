@@ -209,8 +209,10 @@ async function fetchRun(
   const files: ExtractedFile[] = [];
   let failed = 0;
   if (!dryRun) {
-    const attemptStarts = run.run_attempt > 1 ? await fetcher.attemptStarts(run) : [];
-    for (const artifact of [...toDownload, ...toSniff]) {
+    const downloads = [...toDownload, ...toSniff];
+    const attemptStarts =
+      run.run_attempt > 1 && downloads.length > 0 ? await fetcher.attemptStarts(run) : [];
+    for (const artifact of downloads) {
       const attempt =
         attemptStarts.length > 0 && artifact.created_at
           ? attemptForArtifact(artifact.created_at, attemptStarts)
