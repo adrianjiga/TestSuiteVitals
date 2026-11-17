@@ -16,9 +16,10 @@ suitevitals collect
   --full-errors
 ```
 
-**Window logic:** with state, collect since the watermark; `--hours-back` overrides to force a
-wider backfill (dedup makes overlap safe); the first run defaults to 72h with a hint about
-going wider.
+**Window logic:** with state, collect since the watermark; `--hours-back` can only widen that
+window (the earlier of the two wins, dedup makes overlap safe) — never narrow it, or runs between
+the watermark and `now - hoursBack` would be skipped while the watermark passed them; the first
+run defaults to 72h with a hint about going wider.
 
 **Backfill ceiling:** runs are listable far back, but artifacts expire per repo retention
 (often 14–90 days). The summary must report `N runs had expired artifacts` — never thin out
