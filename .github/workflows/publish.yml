@@ -4,21 +4,85 @@ on:
   release:
     types: [published]
 
-permissions:
-  contents: read
-  id-token: write
+permissions: read-all
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
 
 jobs:
+  verify:
+    name: Verify and pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Check the release is a main commit with the package version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "$TAG is not on main" >&2
+            exit 1
+          fi
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$TAG" ]; then
+            echo "$TAG does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      - run: npm ci --ignore-scripts
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx biome ci .
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Pack the release tarball
+        run: |
+          artifact="$(npm pack --silent --ignore-scripts)"
+          test -f "$artifact"
+          mv "$artifact" suitevitals.tgz
+
+      - name: Verify the tarball boots
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          tmp="$(mktemp -d)"
+          tar -xzf suitevitals.tgz -C "$tmp"
+          (cd "$tmp/package" && npm install --omit=dev --ignore-scripts --silent)
+          booted="$(node "$tmp/package/dist/cli.js" --version)"
+          rm -rf "$tmp"
+          if [ "v$booted" != "$TAG" ]; then
+            echo "the tarball reports $booted, not $TAG" >&2
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: suitevitals.tgz
+          if-no-files-found: error
+
   publish:
     name: Publish npm package
+    needs: verify
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
@@ -26,27 +90,14 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install -g npm@11.21.2
 
-      - name: Verify release tag matches package version
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+
+      - name: Publish to npm
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          VERSION="v$(node -p "require('./package.json').version")"
-          if [ "$TAG" != "$VERSION" ]; then
-            echo "Release tag $TAG does not match package.json version $VERSION"
-            exit 1
-          fi
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
-
-      - name: Lint and format check
-        run: npx biome ci .
-
-      - name: Type-check
-        run: npm run typecheck
-
-      - name: Publish to npm
-        run: npm publish --provenance --access public
+          args=(--provenance --access public --ignore-scripts)
+          case "$TAG" in *-*) args+=(--tag next) ;; esac
+          npm publish suitevitals.tgz "${args[@]}"
