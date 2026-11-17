@@ -113,7 +113,8 @@ never turns into rate-limit failures.
 The extracted reports are then dispatched to a matching adapter by content sniff and parsed into
 normalized events. Implemented adapters:
 
-- **JUnit** (`<testsuites>`/`<testsuite>` root) — one attempt per test, except Surefire retries
+- **JUnit** (`<testsuites>`/`<testsuite>` root, suites nested at any depth, an inner suite
+  inheriting the enclosing `file`) — one attempt per test, except Surefire retries
   (`rerunFailingTestsCount`): `<flakyFailure>`/`<flakyError>` before a pass become failed attempts
   and mark the test flaky, `<rerunFailure>`/`<rerunError>` after a `<failure>` become failed
   retries; non-JUnit XML

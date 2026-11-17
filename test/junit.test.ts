@@ -156,4 +156,21 @@ describe("parseJUnit", () => {
     </testcase></testsuite>`;
     expect(parseJUnit(xml)[0]?.status).toBe("failed");
   });
+
+  it("collects testcases from suites nested at any depth", () => {
+    const xml = `<testsuites><testsuite name="outer" file="outer.ts">
+      <testcase classname="A" name="top"/>
+      <testsuite name="inner">
+        <testcase classname="B" name="nested"/>
+        <testsuite name="deepest" file="deep.ts"><testcase classname="C" name="deep"/></testsuite>
+      </testsuite>
+    </testsuite><testsuites><testsuite name="grouped"><testcase classname="D" name="grouped"/></testsuite></testsuites></testsuites>`;
+    const tests = parseJUnit(xml);
+    expect(tests.map((t) => [t.title_path.at(-1), t.file])).toEqual([
+      ["grouped", "D"],
+      ["top", "outer.ts"],
+      ["nested", "outer.ts"],
+      ["deep", "deep.ts"],
+    ]);
+  });
 });

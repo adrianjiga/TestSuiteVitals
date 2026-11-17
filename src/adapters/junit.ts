@@ -69,24 +69,35 @@ export function parseJUnit(xml: string, options: RedactOptions = {}): ParsedTest
   const suites = collectSuites(root);
   const tests: ParsedTest[] = [];
 
-  for (const suite of suites) {
-    const suiteFile = str(suite["@_file"]);
+  for (const { suite, file } of suites) {
     const suiteName = str(suite["@_name"]);
     for (const testcase of asArray(suite.testcase)) {
-      tests.push(parseTestcase(testcase, suiteFile, suiteName, options));
+      tests.push(parseTestcase(testcase, file, suiteName, options));
     }
   }
 
   return tests;
 }
 
-/** Gathers `<testsuite>` nodes whether the root is `<testsuites>` or a lone `<testsuite>`. */
-function collectSuites(root: XmlNode): XmlNode[] {
-  const container = root.testsuites as XmlNode | undefined;
-  if (container) {
-    return asArray(container.testsuite);
+/**
+ * Gathers every `<testsuite>` at any depth, under a `<testsuites>` root or a lone `<testsuite>`.
+ * Some emitters (Gradle, JUnit 5 platform, Maven aggregators) nest suites inside suites; reading
+ * only the first level silently dropped every inner suite's tests. An inner suite without its own
+ * `file` inherits the enclosing suite's.
+ */
+function collectSuites(
+  node: XmlNode,
+  inheritedFile?: string,
+): Array<{ suite: XmlNode; file: string | undefined }> {
+  const found: Array<{ suite: XmlNode; file: string | undefined }> = [];
+  for (const container of asArray(node.testsuites)) {
+    found.push(...collectSuites(container, inheritedFile));
   }
-  return asArray(root.testsuite);
+  for (const suite of asArray(node.testsuite)) {
+    const file = str(suite["@_file"]) ?? inheritedFile;
+    found.push({ suite, file }, ...collectSuites(suite, file));
+  }
+  return found;
 }
 
 function parseTestcase(
