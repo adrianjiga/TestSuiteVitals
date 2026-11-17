@@ -11,7 +11,7 @@ npx vitest run test/auth.test.ts   # run a single test file
 npx vitest run -t "precedence"     # run tests matching a name
 npm run typecheck              # tsc --noEmit (the type gate; CI runs this)
 npm run check                  # Biome lint + format + autofix (run before every commit)
-npm run build                  # compile src/ to dist/ (publish artifact)
+npm run build                  # clean dist/ and compile src/ to it (prepublishOnly runs tests + build)
 ```
 
 CI (`.github/workflows/ci.yml`) runs `npm audit` (prod deps, high+), `biome ci`, `typecheck`,

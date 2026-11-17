@@ -29,7 +29,7 @@ npm run typecheck               # type-check without emitting
 npm run check                   # Biome: lint + format + autofix
 npm run lint                    # Biome: lint only
 npm run format                  # Biome: format only
-npm run build                   # compile to dist/
+npm run build                   # clean dist/ and compile to it
 ```
 
 ## Authentication
