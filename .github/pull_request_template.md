@@ -6,6 +6,6 @@
 
 <!-- What problem does this solve, or what does it enable? Reference issues with #NN. -->
 
-## What Changed
+## What changed
 
 <!-- Bullet list of the meaningful changes, grouped by area if useful. -->
