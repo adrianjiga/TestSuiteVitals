@@ -41,20 +41,22 @@ export function initialCollectedAttempts(
 }
 
 /**
- * Keeps every run inside the window, and a run from the lookback stretch before it only when it
- * has an attempt newer than the last one collected (`collectedAttempts`, default 1) — so the
+ * Keeps every run inside the window and every tracked pending run, and a run from the lookback
+ * stretch before the window only when it has an attempt newer than the last one collected (`collectedAttempts`, default 1) — so the
  * lookback re-collects re-runs without re-downloading every already-collected run.
  */
 export function selectRuns(
   runs: WorkflowRun[],
   windowSince: Date,
   collectedAttempts: Record<string, number>,
+  pendingIds: number[] = [],
 ): { runs: WorkflowRun[]; reruns: number } {
   const sinceIso = windowSince.toISOString();
+  const pending = new Set(pendingIds);
   const selected: WorkflowRun[] = [];
   let reruns = 0;
   for (const run of runs) {
-    if (run.created_at >= sinceIso) {
+    if (run.created_at >= sinceIso || pending.has(run.run_id)) {
       selected.push(run);
     } else if (run.run_attempt > (collectedAttempts[String(run.run_id)] ?? 1)) {
       selected.push(run);

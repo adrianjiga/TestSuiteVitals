@@ -299,7 +299,12 @@ async function collectRepo(
     shared.now,
   );
   const collectedAttempts = initialCollectedAttempts(previous, listed, window.since);
-  const { runs, reruns } = selectRuns(listed, window.since, collectedAttempts);
+  const { runs, reruns } = selectRuns(
+    listed,
+    window.since,
+    collectedAttempts,
+    previous.pending_runs,
+  );
   if (reruns > 0) {
     console.log(p.dim(`  Found ${reruns} re-run(s) of older run(s) to collect.`));
   }

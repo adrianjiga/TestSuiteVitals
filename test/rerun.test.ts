@@ -61,6 +61,13 @@ describe("selectRuns", () => {
   });
 });
 
+describe("selectRuns with tracked pending runs", () => {
+  it("keeps a listed pending run from before the window so it needs no separate fetch", () => {
+    const pending = run(20, "2026-06-20T00:00:00Z");
+    expect(selectRuns([pending], WINDOW, {}, [20]).runs).toEqual([pending]);
+  });
+});
+
 describe("nextCollectedAttempts", () => {
   it("records processed re-runs and drops runs that fell out of the listing", () => {
     const listed = [run(1, "2026-06-20T00:00:00Z", 2), run(2, "2026-06-21T00:00:00Z", 3)];
