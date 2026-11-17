@@ -120,8 +120,11 @@ Releases are maintainers-only:
      the tag matches `package.json`, installs without dependency install scripts, runs the
      production audit, `biome ci`, the type check, the tests and the build, packs the tarball,
      checks that it boots and reports the tagged version, and uploads it.
-   - **Publish** downloads that tarball and publishes it with scripts disabled, through trusted
-     publishing (OIDC) with provenance. Only this job can request the publish token, and no
-     project or dependency code runs in it. No npm token is stored in the repository. If that
-     version is already on npm (for example after a manual publish), it logs a notice and skips
-     publishing instead of failing.
+   - **Publish** downloads that tarball and stages it on npm (`npm stage publish`) with scripts
+     disabled, through trusted publishing (OIDC) with provenance. Only this job can request the
+     publish token, and no project or dependency code runs in it. No npm token is stored in the
+     repository. If that version is already on npm (for example after a manual publish), it logs
+     a notice and skips staging instead of failing.
+4. Approve the staged version with two-factor authentication, either on npmjs.com under
+   **Staged Packages** or with `npm stage list suitevitals` and then
+   `npm stage approve <stage-id>`. Until it is approved, the version is not public.

@@ -30,9 +30,11 @@ no instrumentation. Node >=24, ESM.
   merge, publish a GitHub release tagged `v<version>`; that triggers
   `.github/workflows/publish.yml`: a `verify` job (no `id-token`) checks the commit is on `main`
   and the tag matches `package.json`, runs every gate, packs and boot-checks the tarball; a
-  `publish` job (the only one with `id-token: write`) publishes that tarball with
-  `--ignore-scripts` via OIDC trusted publishing with provenance (no npm token). A `-` in the tag
-  publishes under `--tag next`. A version already on npm is skipped with a notice, not failed.
+  `publish` job (the only one with `id-token: write`) stages that tarball with
+  `npm stage publish --ignore-scripts` via OIDC trusted publishing with provenance (no npm token).
+  The trusted publisher only allows staging, so a maintainer must then approve it with 2FA
+  (`npm stage approve <stage-id>` or npmjs.com → Staged Packages) before it is public. A `-` in
+  the tag stages under `--tag next`. A version already on npm is skipped with a notice, not failed.
 
 ## Architecture
 
