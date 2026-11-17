@@ -65,14 +65,15 @@ export function selectRuns(
 }
 
 /**
- * The re-run bookkeeping to save: the highest attempt collected per run, kept only for runs still
+ * The re-run bookkeeping to save: the highest attempt collected or excluded by filters per run
+ * (an excluded one would otherwise be re-selected every collect), kept only for runs still
  * inside the listing (older ones can no longer be re-listed) and only above attempt 1 (the
  * default), so the map stays as small as the number of recent re-runs.
  */
 export function nextCollectedAttempts(
   previous: Record<string, number>,
   listed: WorkflowRun[],
-  processed: WorkflowRun[],
+  disposed: WorkflowRun[],
 ): Record<string, number> {
   const listedIds = new Set(listed.map((run) => String(run.run_id)));
   const next: Record<string, number> = {};
@@ -81,7 +82,7 @@ export function nextCollectedAttempts(
       next[id] = attempt;
     }
   }
-  for (const run of processed) {
+  for (const run of disposed) {
     const id = String(run.run_id);
     if (run.run_attempt > 1 && run.run_attempt > (next[id] ?? 1)) {
       next[id] = run.run_attempt;

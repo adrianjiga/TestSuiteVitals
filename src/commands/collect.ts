@@ -384,7 +384,11 @@ async function collectRepo(
     state.repos[slug] = {
       watermark,
       pending_runs: pending.map((run) => run.run_id),
-      rerun_attempts: nextCollectedAttempts(collectedAttempts, [...listed, ...runs], processed),
+      rerun_attempts: nextCollectedAttempts(
+        collectedAttempts,
+        [...listed, ...runs],
+        [...processed, ...excluded],
+      ),
       last_collected_at: shared.now.toISOString(),
     };
     await saveState(shared.stateFile, state);
