@@ -12,7 +12,7 @@ export const JUNIT_FRAMEWORK = "junit";
  * loses the real report.
  */
 const JUNIT_ROOT =
-  /^\uFEFF?\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^[>]*(?:\[[^\]]*\])?[^>]*>\s*)?<testsuites?[\s/>]/;
+  /^\uFEFF?\s*(?:<\?xml[^>]*>\s*)?(?:<!--(?:[^-]|-(?!->))*-->\s*)*(?:<!DOCTYPE[^[>]*(?:\[[^\]]*\][^>]*)?>\s*)?<testsuites?[\s/>]/;
 
 export function looksLikeJUnit(content: string): boolean {
   return JUNIT_ROOT.test(content.slice(0, 4096));

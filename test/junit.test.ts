@@ -27,6 +27,22 @@ describe("looksLikeJUnit", () => {
     ).toBe(true);
   });
 
+  it("sniffs adversarial comment and DOCTYPE runs in linear time", () => {
+    const comments = `<!--${"--><!--".repeat(600)}x`;
+    const doctype = `<!DOCTYPE ${"a".repeat(4000)}`;
+    const start = performance.now();
+    expect(looksLikeJUnit(comments)).toBe(false);
+    expect(looksLikeJUnit(doctype)).toBe(false);
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+
+  it("accepts comments containing dashes and an external DOCTYPE", () => {
+    expect(looksLikeJUnit('<!-- a --> <!-- b ---><testsuite name="x"/>')).toBe(true);
+    expect(
+      looksLikeJUnit('<?xml version="1.0"?>\n<!DOCTYPE testsuites SYSTEM "x.dtd">\n<testsuite/>'),
+    ).toBe(true);
+  });
+
   it("rejects non-JUnit content", () => {
     expect(looksLikeJUnit('{"stats":{}}')).toBe(false);
   });
