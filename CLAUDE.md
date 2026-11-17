@@ -66,7 +66,11 @@ overridable fields are `hoursBack`, `concurrency`, `workflow`, and `excludeTrigg
 filters (`src/collect/filter.ts`: `--workflow` glob, `--exclude-trigger` events) drop runs by
 *policy* — the watermark may pass excluded runs, unlike pending ones, so filtering a busy workflow
 never stalls collection; `--exclude-trigger pull_request` is also the lever that keeps fork-PR
-artifacts out. `--max-runs` caps a backfill oldest-first (`capRuns`/`watermarkDisposal`), and the
+artifacts out. A GitHub re-run keeps its run's `created_at`, so listing reaches
+`--rerun-lookback-hours` (default 168) behind the window and `src/collect/rerun.ts` keeps a run
+from that stretch only when its attempt beats `rerun_attempts` in state; each artifact's events
+carry the attempt that uploaded it (`attemptForArtifact`), since partial re-runs carry earlier
+attempts' artifacts over. `--max-runs` caps a backfill oldest-first (`capRuns`/`watermarkDisposal`), and the
 watermark never passes a deferred run. The repos share one client/state-file/data-dir and run
 sequentially via `collectRepo`; state is keyed per repo and saved after each, so a crash mid-loop
 keeps the repos already collected, and one repo's failure is reported (non-zero exit) while the

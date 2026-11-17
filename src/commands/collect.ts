@@ -13,6 +13,12 @@ import { type CollectTarget, loadConfig, resolveTargets } from "../collect/confi
 import { capRuns, filterRuns, watermarkDisposal } from "../collect/filter.js";
 import { compileMatrixPattern } from "../collect/matrix.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
+import {
+  DEFAULT_RERUN_LOOKBACK_HOURS,
+  listingStart,
+  nextCollectedAttempts,
+  selectRuns,
+} from "../collect/rerun.js";
 import { nextWatermark } from "../collect/watermark.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
@@ -44,6 +50,7 @@ interface SharedOptions {
   fullErrors: boolean;
   maxArtifactMb: number | undefined;
   maxRuns: number | undefined;
+  rerunLookbackHours: number;
   now: Date;
   palette: Palette;
 }
@@ -137,12 +144,17 @@ export const collectCommand = defineCommand({
       type: "string",
       description: "Process at most this many completed runs per repo; the rest resume next run",
     },
+    "rerun-lookback-hours": {
+      type: "string",
+      description: `Re-list runs this far back to catch re-runs of older runs; 0 disables (default ${DEFAULT_RERUN_LOOKBACK_HOURS})`,
+    },
   },
   async run({ args, rawArgs }) {
     const hoursBack = parseHoursBack(args["hours-back"]);
     const concurrency = parseConcurrency(args.concurrency);
     const maxArtifactMb = parseMaxArtifactMb(args["max-artifact-mb"]);
     const maxRuns = parsePositiveIntFlag(args["max-runs"], "--max-runs");
+    const rerunLookbackHours = parseRerunLookback(args["rerun-lookback-hours"]);
     const palette = createPalette(colorSupported);
 
     const config = args.config ? await loadConfig(args.config) : undefined;
@@ -197,6 +209,7 @@ export const collectCommand = defineCommand({
         fullErrors: args["full-errors"],
         maxArtifactMb,
         maxRuns,
+        rerunLookbackHours,
         now,
         palette,
       };
@@ -265,7 +278,16 @@ async function collectRepo(
     );
   }
 
-  const runs = await listRunsSince(octokit, ref, window.since);
+  const listed = await listRunsSince(
+    octokit,
+    ref,
+    listingStart(window.since, shared.now, shared.rerunLookbackHours),
+  );
+  const collectedAttempts = previous.rerun_attempts ?? {};
+  const { runs, reruns } = selectRuns(listed, window.since, collectedAttempts);
+  if (reruns > 0) {
+    console.log(p.dim(`  Found ${reruns} re-run(s) of older run(s) to collect.`));
+  }
 
   // Pending runs the window listing no longer surfaces (created before the window start) are
   // re-checked by id, so the watermark having passed them never loses their artifacts (D12).
@@ -347,6 +369,7 @@ async function collectRepo(
     state.repos[slug] = {
       watermark,
       pending_runs: pending.map((run) => run.run_id),
+      rerun_attempts: nextCollectedAttempts(collectedAttempts, [...listed, ...runs], processed),
       last_collected_at: shared.now.toISOString(),
     };
     await saveState(shared.stateFile, state);
@@ -530,6 +553,18 @@ function parseHoursBack(value: string | undefined): number | undefined {
   const hours = Number(value);
   if (!Number.isFinite(hours) || hours <= 0) {
     throw new Error(`Invalid --hours-back "${value}": expected a positive number.`);
+  }
+  return hours;
+}
+
+/** Parses `--rerun-lookback-hours`: a non-negative number, defaulting when absent. */
+function parseRerunLookback(value: string | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_RERUN_LOOKBACK_HOURS;
+  }
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours < 0) {
+    throw new Error(`Invalid --rerun-lookback-hours "${value}": expected a non-negative number.`);
   }
   return hours;
 }

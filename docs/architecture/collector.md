@@ -11,6 +11,7 @@ suitevitals collect
   --workflow <glob>       only collect matching workflows (default: all)
   --exclude-trigger <l>   skip runs fired by these events (comma-separated)
   --max-runs <n>          cap completed runs per invocation, oldest first
+  --rerun-lookback-hours  re-list this far back for re-runs (default 168, 0 disables)
   --max-artifact-mb <n>   default 100 (tier-3 sniff cap)
   --dry-run               show what would be fetched
   --full-errors
@@ -202,8 +203,13 @@ filters on `report` and `dashboard`, the `prune` retention command, and monorepo
 ### Known gaps
 
 Run listing filters by *creation* time (`created>=…`), and a GitHub re-run keeps the original
-run's `created_at`, so a re-run of a run created before the current window is not seen (its new
-attempt is collected only if a later `--hours-back` backfill covers the creation date).
+run's `created_at`, so the window past the watermark never shows a new attempt of an older run.
+Listing therefore reaches `--rerun-lookback-hours` (default 168) behind the window start
+(`src/collect/rerun.ts`); a run from that stretch is collected only when its `run_attempt` is
+above the highest attempt already collected for it (`rerun_attempts` in state, kept only for
+listed runs above attempt 1), so the lookback never re-downloads already-collected runs. A
+re-run older than the lookback is still collected only by a `--hours-back` backfill covering
+its creation date.
 
 A partial re-run ("re-run failed jobs") carries the untouched jobs' artifacts over, so a run's
 artifact list mixes attempts. Each artifact is attributed to the latest attempt that had started

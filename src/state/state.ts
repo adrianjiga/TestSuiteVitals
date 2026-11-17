@@ -9,6 +9,8 @@ export interface RepoState {
   watermark?: string;
   /** In-progress/queued run ids to re-check next collection; the watermark never passes these. */
   pending_runs: number[];
+  /** Highest attempt collected per recent re-run (run id → attempt), so the lookback skips it. */
+  rerun_attempts?: Record<string, number>;
   /** ISO timestamp of the last successful collection for this repo. */
   last_collected_at?: string;
 }

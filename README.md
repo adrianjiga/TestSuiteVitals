@@ -63,6 +63,7 @@ suitevitals collect --config repos.json                 # repos from a config fi
 | `--workflow <glob>` | Only collect runs of workflows matching this glob (`*` wildcard; default all). |
 | `--exclude-trigger <list>` | Skip runs fired by these events (comma-separated, e.g. `pull_request`). |
 | `--max-runs <n>` | Process at most this many completed runs per repo; the rest resume next run. |
+| `--rerun-lookback-hours <n>` | Re-list runs this far back to catch re-runs of older runs; `0` disables (default 168). |
 | `--exclude-artifact <list>` | Skip artifacts whose name matches these globs (comma-separated). Dropped before download. |
 | `--matrix-from-artifact <regex>` | Regex with named groups read from each artifact name; the group names become the matrix dimensions. |
 | `--max-artifact-mb <n>` | Size cap when sniffing unnamed artifacts for reports (default 100). |
