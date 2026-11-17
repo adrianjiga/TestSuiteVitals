@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import pLimit from "p-limit";
+import { terminalSafe } from "../colors.js";
 import { type ArtifactMeta, partitionArtifacts } from "../github/artifacts.js";
 import { attemptForArtifact, type WorkflowRun } from "../github/runs.js";
 import { ArchiveTooLargeError, DEFAULT_MAX_EXTRACT_MB, extractZipNested } from "./extract.js";
@@ -233,8 +234,10 @@ async function fetchRun(
         // and aborting before the watermark advances is what makes them safe to retry (D12).
         failed++;
         console.warn(
-          `Skipping artifact "${artifact.name}" (#${artifact.id}) of run ${run.run_id}: ` +
-            `${(error as Error).message}`,
+          terminalSafe(
+            `Skipping artifact "${artifact.name}" (#${artifact.id}) of run ${run.run_id}: ` +
+              `${(error as Error).message}`,
+          ),
         );
       }
     }

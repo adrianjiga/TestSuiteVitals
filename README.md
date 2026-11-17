@@ -80,7 +80,8 @@ alongside a `collect` on the same data (a stale lock whose recorded pid is gone 
 automatically, and Ctrl-C releases the lock on the way out); an artifact that would decompress
 past a 500 MB budget is skipped and reported instead of exhausting memory — a report artifact
 already bigger than that budget is skipped before it is even downloaded; a corrupt archive or an
-unparseable report file costs that one artifact or file, with a warning, never the run; in a
+unparseable report file costs that one artifact or file, with a warning, never the run; control
+characters in test titles and artifact names are neutralized before they reach your terminal; in a
 multi-repo invocation a failing repo is reported and the rest still collect; and a corrupt line
 in a partition is skipped with a warning rather than failing the run. Error messages are
 redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, OpenAI-style),

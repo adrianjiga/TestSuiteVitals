@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { type DetectedReport, detectAndParse } from "../adapters/dispatch.js";
 import type { RunReports } from "../artifacts/fetch.js";
+import { terminalSafe } from "../colors.js";
 import { buildEvent, type RunContext, type TestEvent } from "../events/event.js";
 import type { WorkflowRun } from "../github/runs.js";
 import { type MatrixPattern, matrixForArtifact } from "./matrix.js";
@@ -78,7 +79,9 @@ export async function parseRunReports(
         // XML, absurd nesting) is deterministic content — retrying yields the same bytes — so
         // it costs this one file, with a warning, never the whole collect (F1).
         summary.filesFailed++;
-        console.warn(`Skipping unparseable report file ${file}: ${(error as Error).message}`);
+        console.warn(
+          terminalSafe(`Skipping unparseable report file ${file}: ${(error as Error).message}`),
+        );
         continue;
       }
       if (!detected) {

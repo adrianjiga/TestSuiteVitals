@@ -1,5 +1,5 @@
 import { defineCommand } from "citty";
-import { colorSupported, createPalette, type Palette } from "../colors.js";
+import { colorSupported, createPalette, type Palette, terminalSafe } from "../colors.js";
 import {
   type Diagnosis,
   diagnose,
@@ -97,7 +97,9 @@ function printDiagnosis(slug: string, signals: RepoSignals, result: Diagnosis, p
 
   if (result.uploadsReports) {
     console.log(
-      p.good(`\n✓ ${slug} uploads parseable reports: ${result.matchedArtifacts.join(", ")}.`),
+      p.good(
+        `\n✓ ${slug} uploads parseable reports: ${terminalSafe(result.matchedArtifacts.join(", "))}.`,
+      ),
     );
     console.log(`  Run \`suitevitals collect --repo ${slug}\` to start collecting.`);
     return;

@@ -148,7 +148,10 @@ score/signal) built over picocolors. `createPalette(enabled)` returns a no-op pa
 disabled, so rendering stays pure — `renderReport` and the `collect` print helpers take an
 injected palette and default to plain (tests assert on colorless output). Commands enable color
 via `colorSupported` (picocolors' TTY / `NO_COLOR` / `FORCE_COLOR` detection). `--json` is never
-colored. Color is applied *after* column padding so ANSI codes never break table alignment.
+colored. Color is applied *after* column padding so ANSI codes never break table alignment. Artifact-derived
+text (test titles, file/artifact names, parser errors) goes through `terminalSafe` before printing,
+so an ESC smuggled into a report cannot drive the terminal; `--json` and the dashboard escape it
+themselves.
 
 Idempotency contract (D12): `collect` appends durably *first* (the append and its directory are fsynced), then
 advances the watermark and saves state — so a crash between is recovered by re-collecting (the
