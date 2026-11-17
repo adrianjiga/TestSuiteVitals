@@ -109,6 +109,16 @@ describe("normalizeTestFile", () => {
     expect(normalizeTestFile("D:\\a\\app\\app\\test\\login.spec.js")).toBe("test/login.spec.js");
   });
 
+  it("strips self-hosted and container-job workspace roots too", () => {
+    expect(normalizeTestFile("/opt/actions-runner/_work/app/app/test/login.spec.js")).toBe(
+      "test/login.spec.js",
+    );
+    expect(normalizeTestFile("C:\\actions-runner\\_work\\app\\app\\test\\login.spec.js")).toBe(
+      "test/login.spec.js",
+    );
+    expect(normalizeTestFile("/__w/app/app/test/login.spec.js")).toBe("test/login.spec.js");
+  });
+
   it("leaves relative paths and class names unchanged, so existing ids are stable", () => {
     expect(normalizeTestFile("cypress/e2e/buttons.cy.ts")).toBe("cypress/e2e/buttons.cy.ts");
     expect(normalizeTestFile("com.example.LoginTest")).toBe("com.example.LoginTest");

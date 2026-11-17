@@ -213,7 +213,7 @@ context beyond what `docs/` captures. The decisions that constrain code:
 - **Data layout:** partitioned NDJSON at `data/<owner>__<repo>/<YYYY-MM>.ndjson`; one record per test
   per run per matrix cell; every record carries `schema_version`.
 - **Test identity:** `id = hash(file + title_path)` only, with `file` normalized first
-  (`normalizeTestFile`: `/` separators, GitHub-hosted runner workspace root stripped). The matrix (browser, viewport, …) is *always
+  (`normalizeTestFile`: `/` separators, hosted/self-hosted/container workspace root stripped). The matrix (browser, viewport, …) is *always
   a dimension, never identity*. Grouping by matrix is a report-time option, so changing it never
   orphans collected data.
 - **Idempotency:** dedup key is `(run_id, run_attempt, id, matrix)`. State (the watermark) advances
