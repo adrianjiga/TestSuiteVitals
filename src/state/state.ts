@@ -27,9 +27,13 @@ export function emptyState(): State {
   return { schema_version: STATE_SCHEMA_VERSION, repos: {} };
 }
 
-/** Returns the repo's state, or an empty entry if this repo has never been collected. */
+/**
+ * Returns the repo's state, or an empty entry if this repo has never been collected. A
+ * hand-edited entry missing `pending_runs` gets an empty list rather than crashing collect.
+ */
 export function repoState(state: State, repo: string): RepoState {
-  return state.repos[repo] ?? { pending_runs: [] };
+  const entry = state.repos[repo];
+  return entry ? { ...entry, pending_runs: entry.pending_runs ?? [] } : { pending_runs: [] };
 }
 
 /**
