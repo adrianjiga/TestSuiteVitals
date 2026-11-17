@@ -3,6 +3,10 @@
 Decisions here capture _why_ the codebase looks the way it does, so a future
 change can weigh the original trade-off before unpicking it.
 
+Records 0001–0012 were first numbered D1–D12, and code comments still cite them
+that way: D5 is [0005](0005-test-identity.md), D12 is
+[0012](0012-crash-safe-idempotent-collect.md), and so on.
+
 - [0001-partitioned-ndjson-store](0001-partitioned-ndjson-store.md) — store
   events as plain NDJSON at `data/<owner>__<repo>/<YYYY-MM>.ndjson`.
 - [0002-zstd-closed-months](0002-zstd-closed-months.md) — `compact` zstd-compresses
