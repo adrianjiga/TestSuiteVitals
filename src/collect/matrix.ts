@@ -27,14 +27,15 @@ export type MatrixPattern = RegExp;
  */
 export function compileMatrixPattern(pattern: string, where = "matrixFromArtifact"): MatrixPattern {
   let regex: RegExp;
+  let groups: Record<string, string> | undefined;
   try {
     regex = new RegExp(pattern);
+    groups = new RegExp(`${pattern}|`).exec("")?.groups;
   } catch (error) {
     throw new Error(
       `Invalid ${where}: not a valid regular expression (${(error as Error).message}).`,
     );
   }
-  const groups = new RegExp(`${pattern}|`).exec("")?.groups;
   if (!groups || Object.keys(groups).length === 0) {
     throw new Error(
       `Invalid ${where}: the pattern must declare at least one named group, ` +
