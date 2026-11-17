@@ -19,12 +19,10 @@ export function parseCommaList(
   return items;
 }
 
-/** Validates `--workflow` with the rule a config file's `workflow` follows. */
 export function parseWorkflowFlag(value: string | undefined): string | undefined {
   return optionalString(value, "--workflow");
 }
 
-/** Validates `--matrix-from-artifact` with the rule a config file's pattern follows. */
 export function parseMatrixFlag(value: string | undefined): string | undefined {
   return optionalPattern(value, "--matrix-from-artifact");
 }
