@@ -87,7 +87,8 @@ Every change goes through a branch and a pull request against
   `src/report/score.ts`).
 - Pure logic is unit-tested: windows, filtering, parsing, redaction, dedup, the watermark,
   scoring and the rest. Only the raw Octokit calls (`listRunsSince`, `getRun`,
-  `listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`) are left to integration.
+  `listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`, `listAttemptStarts`,
+  `listRecentCompletedRuns`) are left to integration.
 - Code that touches the outside world takes its dependencies as arguments. `resolveToken` takes
   an injectable `env` and `runGhCli`, so the token chain is tested without spawning `gh` or
   touching `process.env`. Follow the same style for new code.
@@ -113,6 +114,8 @@ Releases are maintainers-only:
 
 1. Bump `version` in `package.json` and date the entry in `CHANGELOG.md`, in a pull request.
 2. After it merges, create a GitHub release with the tag `v<version>`.
-3. The `.github/workflows/publish.yml` workflow checks that the tag matches `package.json`, runs
-   `npm run check`, the type check, the tests and the build, and publishes to npm through trusted
-   publishing (OIDC) with provenance. No npm token is stored in the repository.
+3. The `.github/workflows/publish.yml` workflow checks that the tag matches `package.json`, installs
+   without dependency install scripts, runs the production audit, `biome ci` and the type check,
+   then runs `npm publish`. Its `prepublishOnly` script runs the tests and a clean build first, so
+   keep it. It publishes through trusted publishing (OIDC) with provenance; no npm token is stored
+   in the repository.
