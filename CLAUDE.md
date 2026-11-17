@@ -19,7 +19,9 @@ CI (`.github/workflows/ci.yml`) runs `npm audit` (prod deps, high+), `biome ci`,
 
 Run `npm run check` before every commit; after a feature, also run tests and update `README.md`
 and this file. Formatting is Biome (double quotes, 2-space, 100-col) — let it own style; don't
-hand-format.
+hand-format. Biome also formats Markdown (padded tables, `_emphasis_`), except under `.claude/`,
+whose agent and skill files carry frontmatter. `useMathMinMax` is off: it misfires on the
+ISO-string comparisons in `watermark.ts`/`filter.ts`, where `Math.max` would return `NaN`.
 
 ## Environment
 
