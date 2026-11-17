@@ -7,30 +7,33 @@ you already upload and tells you which tests are flaky, how badly, and where.
 No server, no instrumentation changes — point it at a GitHub repo, and it
 normalizes the test-report artifacts into plain files you own.
 
-> **Status:** v1 feature-complete (M1–M5: collect, report, dashboard, compact, prune, doctor). Not yet published to npm.
+## Install
+
+Requires Node.js 24 or newer.
+
+```bash
+npx suitevitals --help          # run without installing
+npm install -g suitevitals      # or install the `suitevitals` command globally
+```
+
+## Quick start
+
+```bash
+suitevitals doctor --repo <owner/name>    # check the repo uploads parseable test reports
+suitevitals collect --repo <owner/name>   # ingest the last 72h of CI artifacts into ./data
+suitevitals report --repo <owner/name>    # rank tests by flakiness
+suitevitals dashboard --repo <owner/name> # write a self-contained HTML dashboard
+```
+
+`collect` writes `state.json` and `data/` in the current directory (override with `--state-file`
+and `--data-dir`); run the other commands from the same place, or pass the same `--data-dir`.
+Re-running `collect` is safe and picks up where it left off.
 
 ## Documentation
 
 Architecture and design rationale live in [`docs/architecture/`](docs/architecture/overview.md):
 the [locked decisions](docs/architecture/decisions.md), the [event schema](docs/architecture/event-schema.md),
 and the [collector pipeline](docs/architecture/collector.md).
-
-## Requirements
-
-- Node.js >= 24
-
-## Development
-
-```bash
-npm install
-npm run dev -- collect --help   # run the CLI from source
-npm test                        # run the test suite
-npm run typecheck               # type-check without emitting
-npm run check                   # Biome: lint + format + autofix
-npm run lint                    # Biome: lint only
-npm run format                  # Biome: format only
-npm run build                   # clean dist/ and compile to it
-```
 
 ## Authentication
 
@@ -42,6 +45,10 @@ token in this order:
 3. `gh auth token` (the GitHub CLI, if installed and authenticated)
 
 If none yields a token, it exits with a message listing all three options.
+
+The token needs read access only: for a fine-grained token, **Actions: read** and **Contents:
+read** on the repositories you collect (Contents is used by `doctor`); for a classic token, the
+`repo` scope for private repositories or no scope for public ones.
 
 ## Usage
 
@@ -285,7 +292,7 @@ A failing command prints a one-line `Error: …` and exits with status 1 — inc
 not an error: `report --json` prints `[]`. Set
 `SUITEVITALS_DEBUG=1` to print the full stack trace instead, e.g. when reporting a bug.
 
-> **Status (v1 feature-complete, M1–M5):** `collect` ingests **JUnit**, **Playwright blob**, and
+> **In short:** `collect` ingests **JUnit**, **Playwright blob**, and
 > **mochawesome** reports from one or more repos (repeatable `--repo` or a `--config` file) into
 > dedup'd monthly NDJSON partitions, in parallel with rate-limit backoff, with workflow/trigger
 > filters and a `--max-runs` cap, and falls back to sniffing unnamed artifacts (under
@@ -294,6 +301,19 @@ not an error: `report --json` prints `[]`. Set
 > filterable by `--since`/`--branch`/`--workflow`; `dashboard` renders the same ranking as a
 > self-contained HTML monitor; `compact` zstd-compresses closed months; `prune` applies a
 > retention window; `doctor` diagnoses a repo's report setup, monorepos included.
+
+## Development
+
+```bash
+npm install
+npm run dev -- collect --help   # run the CLI from source
+npm test                        # run the test suite
+npm run typecheck               # type-check without emitting
+npm run check                   # Biome: lint + format + autofix
+npm run lint                    # Biome: lint only
+npm run format                  # Biome: format only
+npm run build                   # clean dist/ and compile to it
+```
 
 ## License
 
