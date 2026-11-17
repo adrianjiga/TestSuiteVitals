@@ -28,8 +28,11 @@ no instrumentation. Node >=24, ESM.
   update the ruleset's required checks with it.
 - Releasing: in a PR, bump `package.json` (+ lockfile) and date the `CHANGELOG.md` section. After
   merge, publish a GitHub release tagged `v<version>`; that triggers
-  `.github/workflows/publish.yml`, which checks the tag matches `package.json`, runs the gates and
-  publishes to npm via OIDC trusted publishing with provenance (no npm token).
+  `.github/workflows/publish.yml`: a `verify` job (no `id-token`) checks the commit is on `main`
+  and the tag matches `package.json`, runs every gate, packs and boot-checks the tarball; a
+  `publish` job (the only one with `id-token: write`) publishes that tarball with
+  `--ignore-scripts` via OIDC trusted publishing with provenance (no npm token). A `-` in the tag
+  publishes under `--tag next`.
 
 ## Architecture
 

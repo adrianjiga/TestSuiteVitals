@@ -113,9 +113,13 @@ Every change goes through a branch and a pull request against
 Releases are maintainers-only:
 
 1. Bump `version` in `package.json` and date the entry in `CHANGELOG.md`, in a pull request.
-2. After it merges, create a GitHub release with the tag `v<version>`.
-3. The `.github/workflows/publish.yml` workflow checks that the tag matches `package.json`, installs
-   without dependency install scripts, runs the production audit, `biome ci` and the type check,
-   then runs `npm publish`. Its `prepublishOnly` script runs the tests and a clean build first, so
-   keep it. It publishes through trusted publishing (OIDC) with provenance; no npm token is stored
-   in the repository.
+2. After it merges, create a GitHub release on `main` with the tag `v<version>`. A tag with a
+   suffix such as `v0.2.0-rc.1` publishes under npm's `next` tag instead of `latest`.
+3. `.github/workflows/publish.yml` then runs two jobs:
+   - **Verify and pack** (no publishing rights) checks that the release commit is on `main` and
+     the tag matches `package.json`, installs without dependency install scripts, runs the
+     production audit, `biome ci`, the type check, the tests and the build, packs the tarball,
+     checks that it boots and reports the tagged version, and uploads it.
+   - **Publish** downloads that tarball and publishes it with scripts disabled, through trusted
+     publishing (OIDC) with provenance. Only this job can request the publish token, and no
+     project or dependency code runs in it. No npm token is stored in the repository.
