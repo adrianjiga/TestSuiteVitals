@@ -38,7 +38,8 @@ If a token is found but GitHub answers 401, 403 or 404, check its access: a
 fine-grained token needs **Actions: read** and **Contents: read** on that repo;
 a classic token needs the `repo` scope for private repos. The Actions-provided
 `GITHUB_TOKEN` only reaches the repo its workflow runs in, and needs
-`actions: read` in the workflow's `permissions:`.
+`actions: read` and `contents: read` in the workflow's `permissions:` (`doctor`
+reads file contents).
 
 ## "Another suitevitals process appears to be running"
 
