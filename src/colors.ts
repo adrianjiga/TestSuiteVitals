@@ -39,8 +39,6 @@ export const colorSupported: boolean = pc.isColorSupported;
 /** No-op palette — the default for pure rendering and tests. */
 export const plainPalette: Palette = createPalette(false);
 
-const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
-
 /**
  * Neutralizes control characters in text that came from a CI artifact (test titles, file and
  * artifact names, parser errors) before it reaches the terminal. Raw, an ESC could clear the
@@ -48,5 +46,14 @@ const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]/g;
  * controls become a space so layout survives; the rest become U+FFFD so tampering stays visible.
  */
 export function terminalSafe(text: string): string {
-  return text.replace(CONTROL_CHARS, (char) => ("\t\n\r".includes(char) ? " " : "\uFFFD"));
+  let safe = "";
+  for (const char of text) {
+    const code = char.charCodeAt(0);
+    if (code > 0x1f && (code < 0x7f || code > 0x9f)) {
+      safe += char;
+    } else {
+      safe += "\t\n\r".includes(char) ? " " : "\uFFFD";
+    }
+  }
+  return safe;
 }
