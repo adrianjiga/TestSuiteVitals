@@ -94,7 +94,7 @@ export const collectCommand = defineCommand({
     },
     "hours-back": {
       type: "string",
-      description: "Backfill window in hours; overrides the stored watermark",
+      description: "Backfill window in hours; widens past the stored watermark, never narrows it",
     },
     "state-file": {
       type: "string",
