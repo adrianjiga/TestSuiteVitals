@@ -216,9 +216,13 @@ run's `created_at`, so the window past the watermark never shows a new attempt o
 Listing therefore reaches `--rerun-lookback-hours` (default 48) behind the window start
 (`src/collect/rerun.ts`); a run from that stretch is collected only when its `run_attempt` is
 above the highest attempt already collected for it (`rerun_attempts` in state, kept only for
-listed runs above attempt 1), so the lookback never re-downloads already-collected runs. A
-re-run older than the lookback is still collected only by a `--hours-back` backfill covering
-its creation date.
+listed runs above attempt 1), so the lookback never re-downloads already-collected runs. A run a
+filter excludes is recorded too, so it is not re-selected every collect. A repo collected before
+`rerun_attempts` existed seeds it from its first listing (`initialCollectedAttempts`): the stored
+data already covers those runs, and re-collecting them would store carried-over results again
+under new dedup keys. Tracked pending runs found in the listing are kept from it rather than
+re-fetched by id. A re-run older than the lookback is still collected only by a `--hours-back`
+backfill covering its creation date.
 
 GitHub returns at most 1000 runs for a `created`-filtered listing, however many pages exist.
 Listing queries explicit `created:start..end` ranges and halves any range whose `total_count`
