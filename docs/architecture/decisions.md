@@ -114,4 +114,10 @@ append. The watermark never passes an in-progress run; an in-progress run the wi
 no longer surfaces (a wide `--hours-back` saw it once) is re-fetched by id from `pending_runs`
 until it completes, so advancing past it never loses it.
 
+`run_attempt` is the attempt that uploaded each event's artifact. Data collected before that
+change stamped every event of a partially re-run run with the run's latest attempt, so
+explicitly re-collecting such a run (a `--hours-back` backfill over it) stores its carried-over
+results again under the corrected attempt. Upgrades avoid this on their own: the re-run lookback
+treats re-runs collected before the upgrade as already collected.
+
 **Why:** re-runs are always safe; nothing is silently skipped.

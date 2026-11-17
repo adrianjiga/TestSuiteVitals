@@ -44,7 +44,9 @@ One NDJSON record per test, per workflow run, per matrix cell.
 - `run.run_attempt` — a human clicking "re-run failed jobs" is a signal the test reporter
   never sees. It is the attempt that *uploaded* the report's artifact, not the run's latest
   attempt: a partial re-run carries earlier attempts' artifacts over, and stamping those with
-  the new attempt would double-count them under a second dedup key.
+  the new attempt would double-count them under a second dedup key. Events collected before this
+  rule carry the run's latest attempt instead (see
+  [D12](decisions.md#d12--crash-safety--idempotency)).
 - `error` — redacted and truncated per [D6](decisions.md#d6--error-storage-redacted--truncated-by-default);
   `fingerprint` per [D7](decisions.md#d7--failure-clustering-stack-frame-fingerprint).
 

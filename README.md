@@ -63,7 +63,7 @@ suitevitals collect --config repos.json                 # repos from a config fi
 | `--repo <owner/name>` | Repository to collect from; repeat the flag for multiple repos. |
 | `--config <path>` | JSON file listing repos and per-repo overrides (see below). |
 | `--token <token>` | GitHub token; overrides `GITHUB_TOKEN` and the `gh` CLI. |
-| `--hours-back <n>` | Backfill window in hours; widens past the stored watermark, never narrows it. |
+| `--hours-back <n>` | Backfill window in hours; widens past the stored watermark, never narrows it. To skip a long gap on purpose, delete the repo's entry from the state file first. |
 | `--state-file <path>` | Path to the state file (default `state.json`). |
 | `--data-dir <path>` | Directory for the NDJSON event partitions (default `data`). |
 | `--concurrency <n>` | Number of runs to fetch in parallel (default 5). |
