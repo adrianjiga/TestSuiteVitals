@@ -53,11 +53,12 @@ and any other extraction or parse failure costs only that artifact/file with a w
 `src/artifacts/fetch.ts` to orchestrate) → parse reports into events (`src/collect/parse.ts` walks files, `src/adapters/`
 dispatches by content sniff, `src/events/` holds the schema/identity in `event.ts` and
 redaction/fingerprint in `error.ts`) → append to NDJSON (`src/store/` for partition/dedup/append)
-and advance the watermark (`src/collect/watermark.ts`). Adapters: **JUnit** (`src/adapters/junit.ts`),
+and advance the watermark (`src/collect/watermark.ts`). Adapters: **JUnit** (`src/adapters/junit.ts`,
+one attempt per test unless Surefire recorded retries via `flakyFailure`/`rerunFailure` elements),
 **Playwright blob** (`src/adapters/playwright-blob.ts`, parses `report.jsonl` teleReporter events
 — suite tree + per-retry `attempts[]` + matrix from project name), and **Mochawesome**
 (`src/adapters/mochawesome.ts`, Cypress/Mocha `stats`+`results` JSON — recursive suite walk, flat
-one-attempt-per-test like JUnit, no matrix). All emit the same `ParsedTest` shape + `buildEvent`.
+one-attempt-per-test, no matrix). All emit the same `ParsedTest` shape + `buildEvent`.
 
 A single `collect` run can target several repos: repeatable `--repo`, a `--config` JSON file, or
 both (`src/collect/config.ts` parses/validates and `resolveTargets` merges them most-specific-wins:

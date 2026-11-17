@@ -113,14 +113,17 @@ never turns into rate-limit failures.
 The extracted reports are then dispatched to a matching adapter by content sniff and parsed into
 normalized events. Implemented adapters:
 
-- **JUnit** (`<testsuites>`/`<testsuite>` root) — flat, one attempt per test; non-JUnit XML
+- **JUnit** (`<testsuites>`/`<testsuite>` root) — one attempt per test, except Surefire retries
+  (`rerunFailingTestsCount`): `<flakyFailure>`/`<flakyError>` before a pass become failed attempts
+  and mark the test flaky, `<rerunFailure>`/`<rerunError>` after a `<failure>` become failed
+  retries; non-JUnit XML
   (e.g. TestNG's `testng-results.xml`) is skipped.
 - **Playwright blob** (`report.jsonl` teleReporter stream) — builds the suite tree from
   `onProject`/`onBegin`, groups `onTestEnd` retries into `attempts[]`, and derives the **matrix**
   from the project name. This is what sharded Playwright CI uploads.
 - **Mochawesome** (`stats` + `results` JSON) — Cypress/Mocha's per-spec report. Recursively walks
   the `suites`/`tests` tree, skipping the root node's title (the spec filename, not a describe).
-  Flat per test (one attempt, never flaky), like JUnit; status comes from `pending`/`skipped` first,
+  Flat per test (one attempt, never flaky); status comes from `pending`/`skipped` first,
   then `state`/`pass`/`fail`. No matrix dimension.
 
 Failure messages are redacted and truncated
