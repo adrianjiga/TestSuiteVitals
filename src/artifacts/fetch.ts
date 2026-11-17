@@ -55,6 +55,8 @@ export interface ArtifactFetchSummary {
   skippedArtifacts: number;
   /** Artifacts dropped by an --exclude-artifact glob, before download. */
   excludedArtifacts: number;
+  /** Re-run artifacts from attempts that were already collected, skipped before download. */
+  collectedArtifacts: number;
 }
 
 export interface ArtifactFetchResult {
@@ -75,6 +77,8 @@ export interface ArtifactFetchOptions {
   maxExtractMb?: number;
   /** Artifact-name globs to drop before any tier considers them (e.g. a merged roll-up). */
   excludeArtifacts?: string[];
+  /** Highest attempt of `run` already collected (0 for none); older attempts' artifacts are skipped. */
+  collectedAttempt?: (run: WorkflowRun) => number;
 }
 
 /** What one run contributed, computed in isolation so runs can be fetched in parallel. */
@@ -88,6 +92,7 @@ interface RunOutcome {
   failedArtifacts: number;
   skippedArtifacts: number;
   excludedArtifacts: number;
+  collectedArtifacts: number;
   files: ExtractedFile[];
 }
 
@@ -104,6 +109,7 @@ function emptySummary(): ArtifactFetchSummary {
     failedArtifacts: 0,
     skippedArtifacts: 0,
     excludedArtifacts: 0,
+    collectedArtifacts: 0,
   };
 }
 
@@ -131,6 +137,7 @@ export async function fetchReportArtifacts(
     maxArtifactMb = DEFAULT_MAX_ARTIFACT_MB,
     maxExtractMb = DEFAULT_MAX_EXTRACT_MB,
     excludeArtifacts = [],
+    collectedAttempt = () => 0,
   } = options;
   const limit = pLimit(Math.max(1, concurrency));
   const maxArtifactBytes = maxArtifactMb * 1024 * 1024;
@@ -148,6 +155,7 @@ export async function fetchReportArtifacts(
           maxArtifactBytes,
           maxExtractBytes,
           excludeArtifacts,
+          collectedAttempt(run),
         );
         completed++;
         onProgress?.(completed, runs.length);
@@ -175,6 +183,7 @@ async function fetchRun(
   maxArtifactBytes: number,
   maxExtractBytes: number,
   excludeArtifacts: string[],
+  collectedAttempt: number,
 ): Promise<RunOutcome> {
   const artifacts = await fetcher.list(run.run_id);
   const partition = partitionArtifacts(artifacts, excludeArtifacts);
@@ -208,15 +217,20 @@ async function fetchRun(
 
   const files: ExtractedFile[] = [];
   let failed = 0;
+  const collectedIds = new Set<number>();
   if (!dryRun) {
-    const downloads = [...toDownload, ...toSniff];
+    const candidates = [...toDownload, ...toSniff];
     const attemptStarts =
-      run.run_attempt > 1 && downloads.length > 0 ? await fetcher.attemptStarts(run) : [];
-    for (const artifact of downloads) {
+      run.run_attempt > 1 && candidates.length > 0 ? await fetcher.attemptStarts(run) : [];
+    for (const artifact of candidates) {
       const attempt =
         attemptStarts.length > 0 && artifact.created_at
           ? attemptForArtifact(artifact.created_at, attemptStarts)
           : run.run_attempt;
+      if (attempt <= collectedAttempt) {
+        collectedIds.add(artifact.id);
+        continue;
+      }
       const zip = await fetcher.download(artifact.id);
       const dest = join(workdir, String(run.run_id), String(artifact.id));
       try {
@@ -248,14 +262,15 @@ async function fetchRun(
   return {
     run,
     artifactsSeen: artifacts.length,
-    reportArtifacts: toDownload.length,
+    reportArtifacts: toDownload.filter((artifact) => !collectedIds.has(artifact.id)).length,
     expiredArtifacts: partition.expired.length,
-    sniffedArtifacts: toSniff.length,
+    sniffedArtifacts: toSniff.filter((artifact) => !collectedIds.has(artifact.id)).length,
     oversizedArtifacts: oversized,
     failedArtifacts: failed,
     // When tier-3 ran, the skipped bucket was examined (sniffed/oversized); otherwise it is left alone.
     skippedArtifacts: sniffRun ? 0 : partition.skipped.length,
     excludedArtifacts: partition.excluded.length,
+    collectedArtifacts: collectedIds.size,
     files,
   };
 }
@@ -278,6 +293,7 @@ function foldOutcomes(outcomes: RunOutcome[]): ArtifactFetchResult {
       summary.runsWithExpired++;
     }
     summary.excludedArtifacts += outcome.excludedArtifacts;
+    summary.collectedArtifacts += outcome.collectedArtifacts;
     summary.filesExtracted += outcome.files.length;
     if (outcome.files.length > 0) {
       reports.push({ run: outcome.run, files: outcome.files });

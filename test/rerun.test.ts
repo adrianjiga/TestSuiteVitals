@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  alreadyCollectedAttempt,
   initialCollectedAttempts,
   listingStart,
   nextCollectedAttempts,
@@ -129,5 +130,19 @@ describe("initialCollectedAttempts", () => {
 
   it("seeds nothing for a repo that was never collected", () => {
     expect(initialCollectedAttempts({ pending_runs: [] }, older, WINDOW)).toEqual({});
+  });
+});
+
+describe("alreadyCollectedAttempt", () => {
+  it("is none for a run in the window or a tracked pending run", () => {
+    expect(alreadyCollectedAttempt(run(1, "2026-06-23T01:00:00Z", 2), WINDOW, {}, [])).toBe(0);
+    expect(alreadyCollectedAttempt(run(2, "2026-06-20T00:00:00Z", 2), WINDOW, {}, [2])).toBe(0);
+  });
+
+  it("is the recorded attempt, default 1, for a re-run from the lookback stretch", () => {
+    expect(alreadyCollectedAttempt(run(3, "2026-06-20T00:00:00Z", 3), WINDOW, {}, [])).toBe(1);
+    expect(alreadyCollectedAttempt(run(4, "2026-06-20T00:00:00Z", 3), WINDOW, { "4": 2 }, [])).toBe(
+      2,
+    );
   });
 });

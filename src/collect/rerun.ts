@@ -98,3 +98,19 @@ export function nextCollectedAttempts(
   }
   return next;
 }
+
+/**
+ * The highest attempt of `run` already collected: none for a run inside the window or a tracked
+ * pending run, else the recorded attempt (default 1) of a run from the lookback stretch.
+ */
+export function alreadyCollectedAttempt(
+  run: WorkflowRun,
+  windowSince: Date,
+  collectedAttempts: Record<string, number>,
+  pendingIds: number[],
+): number {
+  if (run.created_at >= windowSince.toISOString() || pendingIds.includes(run.run_id)) {
+    return 0;
+  }
+  return collectedAttempts[String(run.run_id)] ?? 1;
+}

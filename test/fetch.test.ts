@@ -324,4 +324,27 @@ describe("fetchReportArtifacts", () => {
 
     expect(fetcher.attemptStarts).not.toHaveBeenCalled();
   });
+
+  it("skips artifacts from attempts that were already collected", async () => {
+    const carried = { ...artifact(97, "junit-report"), created_at: "2026-06-23T10:05:00Z" };
+    const rerun = { ...artifact(98, "junit-report-rerun"), created_at: "2026-06-23T11:05:00Z" };
+    const fetcher: ArtifactFetcher = {
+      attemptStarts: vi.fn(async () => ["2026-06-23T10:00:00Z", "2026-06-23T11:00:00Z"]),
+      list: vi.fn(async () => [carried, rerun]),
+      download: vi.fn(async () => reportZip),
+    };
+
+    const { summary, reports } = await fetchReportArtifacts(
+      fetcher,
+      [{ ...run(1), run_attempt: 2 }],
+      workdir,
+      { collectedAttempt: () => 1 },
+    );
+
+    expect(fetcher.download).toHaveBeenCalledTimes(1);
+    expect(fetcher.download).toHaveBeenCalledWith(98);
+    expect(summary.collectedArtifacts).toBe(1);
+    expect(summary.reportArtifacts).toBe(1);
+    expect(reports[0]?.files.map((f) => f.attempt)).toEqual([2]);
+  });
 });

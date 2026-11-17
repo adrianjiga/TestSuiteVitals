@@ -14,6 +14,7 @@ import { capRuns, filterRuns, watermarkDisposal } from "../collect/filter.js";
 import { compileMatrixPattern } from "../collect/matrix.js";
 import { type ParseSummary, parseRunReports } from "../collect/parse.js";
 import {
+  alreadyCollectedAttempt,
   DEFAULT_RERUN_LOOKBACK_HOURS,
   initialCollectedAttempts,
   listingStart,
@@ -348,6 +349,8 @@ async function collectRepo(
         onProgress: (done, total) => reportProgress(done, total, p),
         concurrency: target.concurrency,
         excludeArtifacts: target.excludeArtifacts,
+        collectedAttempt: (run) =>
+          alreadyCollectedAttempt(run, window.since, collectedAttempts, previous.pending_runs),
         ...(shared.maxArtifactMb !== undefined ? { maxArtifactMb: shared.maxArtifactMb } : {}),
       },
     );
@@ -462,6 +465,13 @@ function printArtifactSummary(summary: ArtifactFetchSummary, dryRun: boolean, p:
     const verb2 = dryRun ? "would sniff" : "sniffed";
     console.log(
       p.dim(`    ${verb2} ${summary.sniffedArtifacts} unnamed artifact(s) for reports (tier 3).`),
+    );
+  }
+  if (summary.collectedArtifacts > 0) {
+    console.log(
+      p.dim(
+        `    ${summary.collectedArtifacts} artifact(s) from already-collected attempts skipped (not downloaded).`,
+      ),
     );
   }
   if (summary.excludedArtifacts > 0) {
