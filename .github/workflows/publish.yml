@@ -94,15 +94,15 @@ jobs:
         with:
           name: package
 
-      - name: Publish to npm
+      - name: Stage on npm
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
           version="${TAG#v}"
           if published="$(npm view "suitevitals@$version" version 2>/dev/null)" && [ "$published" = "$version" ]; then
-            echo "::notice::suitevitals@$version is already on npm; skipping publish."
+            echo "::notice::suitevitals@$version is already on npm; skipping staging."
             exit 0
           fi
           args=(--provenance --access public --ignore-scripts)
           case "$TAG" in *-*) args+=(--tag next) ;; esac
-          npm publish suitevitals.tgz "${args[@]}"
+          npm stage publish suitevitals.tgz "${args[@]}"
