@@ -15,7 +15,7 @@ npm run build                  # clean dist/ and compile src/ to it (prepublishO
 ```
 
 CI (`.github/workflows/ci.yml`) runs `npm audit` (prod deps, high+), `biome ci`, `typecheck`,
-`test`, then `build` on Node 24, with a read-only `GITHUB_TOKEN`.
+`test`, then `build` on a Node 24 and Node 26 matrix, with a read-only `GITHUB_TOKEN`.
 
 Run `npm run check` before every commit; after a feature, also run tests and update `README.md`
 and this file. Formatting is Biome (double quotes, 2-space, 100-col) — let it own style; don't
@@ -23,7 +23,8 @@ hand-format.
 
 ## Environment
 
-- **Node 24 everywhere** — `engines`, CI and local dev — so Node 24 runtime APIs are fine. The
+- **Node 24 is the floor** — `engines` and local dev, with CI also covering Node 26 — so Node 24
+  runtime APIs are fine, but nothing newer. The
   maintainer's nvm *default* alias is still 22.19, so a non-interactive shell can resolve Node 22;
   put Node 24 first on `PATH` (e.g. `nvm use 24`) before running the gates.
 - ESM throughout (`"type": "module"`). Relative imports **must** use `.js` specifiers even from `.ts`
