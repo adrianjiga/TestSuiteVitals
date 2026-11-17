@@ -178,7 +178,8 @@ cell is the opaque `{ artifact: <name> }`. `--exclude-artifact` drops roll-up ar
 before download, so a merged report cannot double-count the per-cell results. Extraction tags each
 file with its source artifact (`ExtractedFile`); do not flatten that away again. Add new formats as adapters, not by touching the pipeline. The
 fetch loop takes an `onProgress` callback so `collect` can show live progress on long backfills.
-Playwright blob artifacts are double-zipped, so `extractZipNested` recurses one nested level. Pure logic (window, classification, run filtering/capping, repo parse,
+Playwright blob artifacts are double-zipped, so `extractZipNested` recurses one nested level,
+drawing every nested archive from one decompression budget per artifact. Pure logic (window, classification, run filtering/capping, repo parse,
 state, glob matching, partitioning, prune cutoff, extract, fetch orchestration, redaction,
 fingerprint, JUnit parse, event build, dedup, watermark, NDJSON append, manifest-path
 selection) is unit-tested; only the raw Octokit calls (`listRunsSince`, `getRun`,

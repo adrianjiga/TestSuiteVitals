@@ -40,7 +40,8 @@ silently.
    dir; expired artifacts are counted and reported. A report match whose *compressed* size
    already exceeds the extraction budget is skipped (as oversized) before download, so it can
    never balloon memory. Extraction enforces a decompressed-size budget (default 500 MB,
-   checked from the zip's declared entry sizes *before* inflating), so a zip bomb is counted
+   checked from the zip's declared entry sizes *before* inflating, and shared by every archive
+   nested inside the artifact), so a zip bomb is counted
    as oversized and skipped, never inflated; any other extraction failure (corrupt or hostile
    archive) costs that one artifact, with a warning — download errors still abort the repo,
    since they are transient and the watermark has not advanced.
