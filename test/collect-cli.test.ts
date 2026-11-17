@@ -1,13 +1,40 @@
 import { spawnSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+
+const scratch = mkdtempSync(join(tmpdir(), "suitevitals-cli-"));
+
+afterAll(() => {
+  rmSync(scratch, { recursive: true, force: true });
+});
 
 function collect(...flags: string[]) {
   const result = spawnSync(
     process.execPath,
-    ["--import", "tsx", "src/cli.ts", "collect", "--repo", "owner/name", ...flags],
-    { encoding: "utf8", env: { ...process.env, GITHUB_TOKEN: "", NO_COLOR: "1" } },
+    [
+      "--import",
+      "tsx",
+      "src/cli.ts",
+      "collect",
+      "--repo",
+      "owner/name",
+      "--token",
+      "not-a-real-token",
+      "--state-file",
+      join(scratch, "state.json"),
+      "--data-dir",
+      join(scratch, "data"),
+      ...flags,
+    ],
+    {
+      encoding: "utf8",
+      timeout: 20_000,
+      env: { ...process.env, GITHUB_TOKEN: "", GH_CONFIG_DIR: scratch, NO_COLOR: "1" },
+    },
   );
-  return { status: result.status, stderr: result.stderr };
+  return { status: result.status, output: `${result.stdout}${result.stderr}` };
 }
 
 describe("collect flag validation", () => {
@@ -16,10 +43,14 @@ describe("collect flag validation", () => {
     [["--exclude-artifact", ","], 'Invalid --exclude-artifact ",": expected artifact name globs.'],
     [["--workflow", ""], "Invalid --workflow: expected a non-empty string."],
     [["--matrix-from-artifact", "(?<x>"], "Invalid --matrix-from-artifact: not a valid regular"],
-  ])("rejects %j with its own flag name before authenticating", (flags, message) => {
-    const { status, stderr } = collect(...flags);
-    expect(status).toBe(1);
-    expect(stderr).toContain(message);
-    expect(stderr).not.toContain("Authenticated");
-  });
+  ])(
+    "rejects %j with its own flag name before authenticating",
+    (flags, message) => {
+      const { status, output } = collect(...flags);
+      expect(status).toBe(1);
+      expect(output).toContain(message);
+      expect(output).not.toContain("Authenticated");
+    },
+    30_000,
+  );
 });
