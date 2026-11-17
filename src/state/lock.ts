@@ -90,11 +90,12 @@ async function isStale(
 }
 
 /**
- * Removes a stale lock without ever removing a live one. Deleting by path is racy: two processes
- * that both saw the dead holder could each delete, and the slower one would delete the lock the
- * faster one had just re-created, leaving both "holding" it. Renaming the lock aside is atomic,
- * so exactly one process gets the file; it then checks the file still names the dead holder, and
- * if it grabbed a fresh live lock instead, links it back into place. Returns whether it broke it.
+ * Removes a stale lock. Deleting by path is racy: two processes that both saw the dead holder
+ * could each delete, and the slower one would delete the lock the faster one had just
+ * re-created, leaving both "holding" it. Renaming the lock aside is atomic, so exactly one
+ * process gets the file; it then checks the file still names the dead holder, and if it grabbed
+ * a fresh live lock instead, links it back into place. Only a third process creating the lock in
+ * that brief link-back window can still collide. Returns whether it broke the lock.
  */
 async function breakStaleLock(path: string, holder: string | undefined): Promise<boolean> {
   const aside = `${path}.${process.pid}.${randomUUID()}.stale`;
