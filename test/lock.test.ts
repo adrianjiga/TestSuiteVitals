@@ -2,7 +2,7 @@ import { mkdtemp, readdir, readFile, rm, utimes, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { acquireDataDirLock, acquireLock, LockError } from "../src/state/lock.js";
+import { acquireDataDirLock, acquireLock, LockError, withDataDirLock } from "../src/state/lock.js";
 
 describe("acquireLock", () => {
   let dir: string;
@@ -106,6 +106,17 @@ describe("acquireLock", () => {
     const release = await acquireDataDirLock(dataDir);
     await expect(acquireDataDirLock(dataDir)).rejects.toThrow(LockError);
     await release();
+    await (await acquireDataDirLock(dataDir))();
+  });
+
+  it("withDataDirLock holds the lock for the callback and releases it even when it throws", async () => {
+    const dataDir = join(dir, "data");
+    await expect(
+      withDataDirLock(dataDir, async () => {
+        await expect(acquireDataDirLock(dataDir)).rejects.toThrow(LockError);
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
     await (await acquireDataDirLock(dataDir))();
   });
 });

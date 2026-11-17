@@ -146,6 +146,16 @@ export async function acquireDataDirLock(
   return acquireLock(join(dataDir, ".lock"), options);
 }
 
+/** Runs `fn` while holding the data-directory lock, releasing it however `fn` ends. */
+export async function withDataDirLock<T>(dataDir: string, fn: () => Promise<T>): Promise<T> {
+  const release = await acquireDataDirLock(dataDir);
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
+
 /** True when `pid` is a running process; EPERM means alive but owned by another user. */
 function defaultIsPidAlive(pid: number): boolean {
   try {

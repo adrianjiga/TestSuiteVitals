@@ -35,7 +35,7 @@ import {
   missingPendingIds,
   type WorkflowRun,
 } from "../github/runs.js";
-import { acquireDataDirLock, acquireLock, LockError } from "../state/lock.js";
+import { acquireDataDirLock, acquireLock } from "../state/lock.js";
 import { loadState, repoState, type State, saveState } from "../state/state.js";
 import { type AppendResult, appendEvents } from "../store/ndjson.js";
 import { parseRepoFlags } from "./repo-flags.js";
@@ -178,30 +178,20 @@ export const collectCommand = defineCommand({
 
     // Single-writer guard (F5): overlapping collects on the same state file would race the
     // read-keys → append sequence into duplicates and clobber each other's watermarks.
-    let releaseLock: () => Promise<void>;
-    try {
-      const releaseState = await acquireLock(`${args["state-file"]}.lock`);
-      let releaseData: () => Promise<void> = async () => {};
+    const releaseState = await acquireLock(`${args["state-file"]}.lock`);
+    let releaseData: () => Promise<void> = async () => {};
+    if (!args["dry-run"]) {
       try {
-        if (!args["dry-run"]) {
-          releaseData = await acquireDataDirLock(args["data-dir"]);
-        }
+        releaseData = await acquireDataDirLock(args["data-dir"]);
       } catch (error) {
         await releaseState();
         throw error;
       }
-      releaseLock = async () => {
-        await releaseData();
-        await releaseState();
-      };
-    } catch (error) {
-      if (error instanceof LockError) {
-        console.error(palette.bad(error.message));
-        process.exitCode = 1;
-        return;
-      }
-      throw error;
     }
+    const releaseLock = async () => {
+      await releaseData();
+      await releaseState();
+    };
 
     // Ctrl-C / kill would skip the finally below (Node dies on the signal without unwinding),
     // stranding the lock until the stale-pid check breaks it next run. Release it eagerly and

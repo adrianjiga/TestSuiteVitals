@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
-import { acquireDataDirLock, LockError } from "../state/lock.js";
+import { withDataDirLock } from "../state/lock.js";
 import { listRepoSlugs } from "../store/compact.js";
 import { pruneCutoff, pruneRepo } from "../store/prune.js";
 
@@ -46,18 +46,7 @@ export const pruneCommand = defineCommand({
       return;
     }
 
-    let release: () => Promise<void>;
-    try {
-      release = await acquireDataDirLock(dataDir);
-    } catch (error) {
-      if (error instanceof LockError) {
-        console.error(palette.bad(error.message));
-        process.exitCode = 1;
-        return;
-      }
-      throw error;
-    }
-    try {
+    await withDataDirLock(dataDir, async () => {
       const verb = args["dry-run"] ? "Would delete" : "Deleted";
       let files = 0;
       let bytes = 0;
@@ -76,9 +65,7 @@ export const pruneCommand = defineCommand({
         return;
       }
       printTotal(verb, files, bytes, cutoff, palette);
-    } finally {
-      await release();
-    }
+    });
   },
 });
 

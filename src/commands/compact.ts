@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { defineCommand } from "citty";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
-import { acquireDataDirLock, LockError } from "../state/lock.js";
+import { withDataDirLock } from "../state/lock.js";
 import { compactRepo, listRepoSlugs } from "../store/compact.js";
 
 const DEFAULT_DATA_DIR = "data";
@@ -35,18 +35,7 @@ export const compactCommand = defineCommand({
       return;
     }
 
-    let release: () => Promise<void>;
-    try {
-      release = await acquireDataDirLock(dataDir);
-    } catch (error) {
-      if (error instanceof LockError) {
-        console.error(palette.bad(error.message));
-        process.exitCode = 1;
-        return;
-      }
-      throw error;
-    }
-    try {
+    await withDataDirLock(dataDir, async () => {
       let months = 0;
       let before = 0;
       let after = 0;
@@ -68,9 +57,7 @@ export const compactCommand = defineCommand({
         return;
       }
       printTotal(months, before, after, palette);
-    } finally {
-      await release();
-    }
+    });
   },
 });
 
