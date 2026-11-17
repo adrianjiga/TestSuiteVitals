@@ -23,7 +23,7 @@ import {
 } from "../collect/rerun.js";
 import { nextWatermark } from "../collect/watermark.js";
 import { computeWindow, DEFAULT_BACKFILL_HOURS } from "../collect/window.js";
-import { colorSupported, createPalette, type Palette } from "../colors.js";
+import { colorSupported, createPalette, type Palette, terminalSafe } from "../colors.js";
 import { downloadArtifactZip, listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
 import { createGitHubClient, type GitHubClient } from "../github/client.js";
@@ -238,7 +238,9 @@ export const collectCommand = defineCommand({
           totals.failed++;
           process.exitCode = 1;
           console.error(
-            palette.bad(`  [${target.slug}] collect failed: ${(error as Error).message}`),
+            palette.bad(
+              `  [${target.slug}] collect failed: ${terminalSafe((error as Error).message)}`,
+            ),
           );
         }
       }

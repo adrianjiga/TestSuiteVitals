@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { type ArgsDef, type CommandDef, defineCommand, runMain } from "citty";
-import { colorSupported, createPalette } from "./colors.js";
+import { colorSupported, createPalette, terminalSafe } from "./colors.js";
 import { collectCommand } from "./commands/collect.js";
 import { compactCommand } from "./commands/compact.js";
 import { dashboardCommand } from "./commands/dashboard.js";
@@ -32,7 +32,7 @@ function withCleanErrors<T extends ArgsDef>(command: CommandDef<T>): CommandDef<
           console.error(error);
         } else {
           const message = error instanceof Error ? error.message : String(error);
-          console.error(createPalette(colorSupported).bad(`Error: ${message}`));
+          console.error(createPalette(colorSupported).bad(`Error: ${terminalSafe(message)}`));
         }
         process.exitCode = 1;
       }
