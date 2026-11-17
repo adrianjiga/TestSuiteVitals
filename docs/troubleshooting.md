@@ -101,7 +101,8 @@ Look at the `collect` output for the repo.
 - **`excluded by filters`.** `--workflow` or `--exclude-trigger` (or the same
   keys in `--config`) dropped the runs. `--workflow` matches the workflow's
   _name_ (`name:` in the YAML, such as `Playwright Tests`), not its file name;
-  `*` is the only wildcard.
+  `*` is the only wildcard. An empty `--workflow ""` (say, from an unset shell
+  variable) is rejected rather than treated as matching nothing.
 - **`Reports: parsed 0/<n> candidate file(s)`.** Files were downloaded but none
   is a supported format. Only JUnit XML, Playwright blob reports and
   Mochawesome JSON are read, from `.xml`, `.jsonl` and `.json` files. An HTML
