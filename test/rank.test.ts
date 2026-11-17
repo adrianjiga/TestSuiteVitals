@@ -67,6 +67,11 @@ describe("parseSince", () => {
     expect(parseSince("2026-06-01", now)?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
   });
 
+  it("accepts a space between the date and the time", () => {
+    expect(parseSince("2026-06-01 12:00Z", now)?.toISOString()).toBe("2026-06-01T12:00:00.000Z");
+    expect(parseSince("2026-06-01 12:00", now)).toBeInstanceOf(Date);
+  });
+
   it("rejects a bare number instead of reading it as a date", () => {
     for (const value of ["7", "30", "2025", "6/1"]) {
       expect(() => parseSince(value, now)).toThrow(/Invalid --since/);
