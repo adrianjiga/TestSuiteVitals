@@ -29,6 +29,12 @@ describe("redactSecrets", () => {
       "ran: mysql --password [REDACTED] --host db",
     );
     expect(redactSecrets("deploy --access-token abc123")).toBe("deploy --access-token [REDACTED]");
+    expect(redactSecrets("cmd -token abc")).toBe("cmd -token [REDACTED]");
+  });
+
+  it("leaves hyphenated words that merely end in a secret key name alone", () => {
+    expect(redactSecrets("Invalid client-secret provided")).toBe("Invalid client-secret provided");
+    expect(redactSecrets("missing auth-token header")).toBe("missing auth-token header");
   });
 
   it("redacts more key names, such as client secrets and Azure account keys", () => {

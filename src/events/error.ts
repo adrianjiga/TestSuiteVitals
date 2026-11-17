@@ -48,7 +48,7 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   // Bearer/Basic auth headers (covers the Authorization header case).
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/g, "$1 [REDACTED]"],
   // CLI flags taking the secret as the next argument: `--password hunter2`.
-  [new RegExp(`(--?(?:${SECRET_KEYS}))\\s+${SECRET_VALUE}`, "gi"), "$1 [REDACTED]"],
+  [new RegExp(`(?<![\\w-])(--?(?:${SECRET_KEYS}))\\s+${SECRET_VALUE}`, "gi"), "$1 [REDACTED]"],
   // key=value / key: value / "key": "value" secrets, quoted values kept whole.
   [new RegExp(`\\b(${SECRET_KEYS})\\b(["']?\\s*[=:]\\s*)${SECRET_VALUE}`, "gi"), "$1$2[REDACTED]"],
   // Query-string values (URLs often carry signed tokens).
