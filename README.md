@@ -275,6 +275,11 @@ Java/JUnit) — including monorepos: one tree listing finds `package.json` files
 subdirectories and Java build files at any depth — and either confirms collection will work or
 hands you copy-pasteable YAML to make it work. This is the zero-to-collecting onboarding path.
 
+### Errors
+
+A failing command prints a one-line `Error: …` and exits with status 1. Set
+`SUITEVITALS_DEBUG=1` to print the full stack trace instead, e.g. when reporting a bug.
+
 > **Status (v1 feature-complete, M1–M5):** `collect` ingests **JUnit**, **Playwright blob**, and
 > **mochawesome** reports from one or more repos (repeatable `--repo` or a `--config` file) into
 > dedup'd monthly NDJSON partitions, in parallel with rate-limit backoff, with workflow/trigger

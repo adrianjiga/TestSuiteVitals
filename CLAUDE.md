@@ -34,7 +34,9 @@ hand-format.
 Suitevitals ingests CI test-report artifacts from GitHub Actions and normalizes them into plain,
 git-friendly files, then reports flakiness. It is a CLI with no server and no instrumentation.
 
-- **`src/cli.ts`** — citty entry; registers subcommands. Each command lives in `src/commands/`.
+- **`src/cli.ts`** — citty entry; registers subcommands (each wrapped by `withCleanErrors`, so a
+  thrown error prints one `Error: …` line and exits 1; `SUITEVITALS_DEBUG=1` prints the stack).
+  Each command lives in `src/commands/`.
 - **`src/github/auth.ts`** — token resolution chain: `--token` → `GITHUB_TOKEN` → `gh auth token` →
   `AuthError`. `resolveToken` takes injectable `env` and `runGhCli` so the chain is unit-tested
   without spawning `gh` or touching `process.env`. Mirror this DI style for anything touching the
