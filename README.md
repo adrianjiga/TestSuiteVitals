@@ -1,205 +1,58 @@
-# Suitevitals
+# suitevitals
 
-> The vital signs of your test suite.
+[![CI](https://github.com/adrianjiga/TestSuiteVitals/actions/workflows/ci.yml/badge.svg)](https://github.com/adrianjiga/TestSuiteVitals/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/suitevitals)](https://www.npmjs.com/package/suitevitals)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A CLI-first, zero-infrastructure tool that retroactively ingests the CI artifacts
-you already upload and tells you which tests are flaky, how badly, and where.
-No server, no instrumentation changes — point it at a GitHub repo, and it
-normalizes the test-report artifacts into plain files you own.
-
-## Install
-
-Requires Node.js 24 or newer.
+Flaky-test reports for GitHub Actions, built from the test-report artifacts your CI already
+uploads.
 
 ```bash
-npx suitevitals --help          # run without installing
-npm install -g suitevitals      # or install the `suitevitals` command globally
+npx suitevitals collect --repo owner/name
+npx suitevitals report --repo owner/name
 ```
 
-## Quick start
+## The problem
 
-```bash
-suitevitals doctor --repo <owner/name>    # check the repo uploads parseable test reports
-suitevitals collect --repo <owner/name>   # ingest the last 72h of CI artifacts into ./data
-suitevitals report --repo <owner/name>    # rank tests by flakiness
-suitevitals dashboard --repo <owner/name> # write a self-contained HTML dashboard
-```
+Flaky tests are easy to notice and hard to measure:
 
-`collect` writes `state.json` and `data/` in the current directory (override with `--state-file`
-and `--data-dir`); run the other commands from the same place, or pass the same `--data-dir`.
-Re-running `collect` is safe and picks up where it left off.
+- a test fails, passes on retry, and the build goes green, so nobody records that it failed;
+- the evidence sits in CI artifacts that expire after a few weeks and that nobody reads;
+- the tools that track flakiness usually need a server, an account, or a change to how the
+  tests run.
 
-## Documentation
+suitevitals reads the artifacts you already have, keeps the results as plain files you own, and
+tells you which tests are flaky, how badly, and where. No server and no changes to your tests.
 
-Architecture and design rationale live in [`docs/architecture/`](docs/architecture/overview.md):
-the [locked decisions](docs/architecture/decisions.md), the [event schema](docs/architecture/event-schema.md),
-and the [collector pipeline](docs/architecture/collector.md).
+## What it does
 
-## Authentication
+1. **Finds the reports** in your GitHub Actions runs: artifacts with report-like names first,
+   and if a run has none, it looks inside the other artifacts too.
+2. **Reads JUnit XML, Playwright blob reports and Mochawesome JSON**, one record per test per
+   run per matrix cell, with error messages redacted.
+3. **Stores the results** as monthly NDJSON files under `data/<owner>__<repo>/`. Re-running
+   `collect` picks up where it left off and never writes a duplicate.
+4. **Ranks the tests** by a flake score, as a terminal table, JSON or a self-contained HTML
+   dashboard.
 
-Suitevitals talks to GitHub through a single Octokit transport and resolves a
-token in this order:
+## How tests are scored
 
-1. `--token <token>`
-2. `GITHUB_TOKEN` environment variable
-3. `gh auth token` (the GitHub CLI, if installed and authenticated)
+Each test gets a score from 0 to 100. Flaky means _inconsistent_, so a test that always passes,
+or always fails the same way (broken, not flaky), scores near zero. The score blends four
+signals:
 
-If none yields a token, it exits with a message listing all three options.
+| Signal                                                  | Weight |
+| ------------------------------------------------------- | ------ |
+| Passed only after a retry                               | 0.45   |
+| Both passed and failed on the same commit               | 0.30   |
+| Failed in more than one way (distinct stack signatures) | 0.15   |
+| The workflow run was re-run                             | 0.10   |
 
-The token needs read access only: for a fine-grained token, **Actions: read** and **Contents:
-read** on the repositories you collect (Contents is used by `doctor`); for a classic token, the
-`repo` scope for private repositories or no scope for public ones.
+Skipped runs do not count. A test with fewer than 5 runs that
+passed or failed (`--min-runs`) is scored but set aside, since the sample is too small to trust. The
+report shows the signals next to the score, so every ranking can be explained.
 
-## Usage
-
-```bash
-suitevitals collect --repo <owner/name> [options]
-suitevitals collect --repo <owner/a> --repo <owner/b>   # multiple repos
-suitevitals collect --config repos.json                 # repos from a config file
-```
-
-| Option                           | Description                                                                                                                                                     |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--repo <owner/name>`            | Repository to collect from; repeat the flag for multiple repos.                                                                                                 |
-| `--config <path>`                | JSON file listing repos and per-repo overrides (see below).                                                                                                     |
-| `--token <token>`                | GitHub token; overrides `GITHUB_TOKEN` and the `gh` CLI.                                                                                                        |
-| `--hours-back <n>`               | Backfill window in hours; widens past the stored watermark, never narrows it. To skip a long gap on purpose, delete the repo's entry from the state file first. |
-| `--state-file <path>`            | Path to the state file (default `state.json`).                                                                                                                  |
-| `--data-dir <path>`              | Directory for the NDJSON event partitions (default `data`).                                                                                                     |
-| `--concurrency <n>`              | Number of runs to fetch in parallel (default 5).                                                                                                                |
-| `--workflow <glob>`              | Only collect runs of workflows matching this glob (`*` wildcard; default all).                                                                                  |
-| `--exclude-trigger <list>`       | Skip runs fired by these events (comma-separated, e.g. `pull_request`).                                                                                         |
-| `--max-runs <n>`                 | Process at most this many completed runs per repo; the rest resume next run.                                                                                    |
-| `--rerun-lookback-hours <n>`     | Re-list runs this far back to catch re-runs of older runs; `0` disables (default 48).                                                                           |
-| `--exclude-artifact <list>`      | Skip artifacts whose name matches these globs (comma-separated). Dropped before download.                                                                       |
-| `--matrix-from-artifact <regex>` | Regex with named groups read from each artifact name; the group names become the matrix dimensions.                                                             |
-| `--max-artifact-mb <n>`          | Size cap when sniffing unnamed artifacts for reports (default 100).                                                                                             |
-| `--full-errors`                  | Store full error messages without redaction or truncation.                                                                                                      |
-| `--dry-run`                      | Show what would be fetched without writing any data.                                                                                                            |
-
-At least one repo is required, via `--repo` (repeatable), `--config`, or both. On the first
-run for a repo, collection defaults to the last 72 hours; afterwards it resumes from the
-stored watermark. Re-running is always safe — overlapping windows are de-duplicated.
-
-Collection is guarded against the usual hazards: a `<state-file>.lock` file rejects a second
-`collect` on the same state file, and a `<data-dir>/.lock` keeps `compact`/`prune` from running
-alongside a `collect` on the same data (a stale lock whose recorded pid is gone is broken
-automatically, and Ctrl-C releases the lock on the way out); an artifact that would decompress
-past a 500 MB budget is skipped and reported instead of exhausting memory — a report artifact
-already bigger than that budget is skipped before it is even downloaded; a corrupt archive or an
-unparseable report file costs that one artifact or file, with a warning, never the run; control
-characters in test titles and artifact names are neutralized before they reach your terminal; in a
-multi-repo invocation a failing repo is reported and the rest still collect; and a corrupt line
-in a partition is skipped with a warning rather than failing the run. Error messages are
-redacted by default — known token shapes (GitHub, Slack, AWS, GitLab, npm, OpenAI-style, Stripe,
-Google API), `user:pass@` URL credentials, JWTs, PEM private-key blocks, query-string values, and
-values of secret-named keys and flags (`password: "…"`, `--token …`) — and
-truncated to a budget that holds even for single-line dumps; `--full-errors` bypasses both.
-
-### Matrix cells from artifact names
-
-Playwright blob reports carry their own matrix (the project name). **JUnit and mochawesome carry
-none** — but a CI matrix job uploads its results under its own artifact name, so the name _is_ the
-cell.
-
-This is not cosmetic. The dedup key is `(run_id, run_attempt, id, matrix)`, so with no matrix every
-cell's result for one test shares a key: the first written wins and the rest are dropped as
-duplicates. **A test that fails only on Firefox is undetectable** — the Chrome pass and the Firefox
-failure collapse into one arbitrary survivor.
-
-`--matrix-from-artifact` names the dimensions with a regex; the **named groups become the matrix**:
-
-```bash
-suitevitals collect --repo owner/web \
-  --matrix-from-artifact 'results-(?<group>[^-]+)-(?<browser>[^-]+)-(?<viewport>[^-]+)'
-```
-
-```
-results-webtables-firefox-desktop  →  { group: "webtables", browser: "firefox", viewport: "desktop" }
-```
-
-The pattern must declare at least one named group — group names are the dimensions, so a pattern
-without them cannot produce a cell and is rejected at config-parse time, before any network work.
-Optional groups that do not participate in a match are omitted rather than stored as empty, so
-`results-ui-mobile` and `results-ui-chrome-mobile` do not land in different cells over an absent key.
-
-Without a pattern the cell is the opaque `{ artifact: <name> }`. Verbose, but it is a fact rather
-than an inference, and it keeps distinct cells distinct. An artifact that does not match a
-configured pattern falls back to the same opaque form rather than being dropped — a report is
-evidence, and discarding it because a pattern was mistyped is the exact failure this prevents.
-
-**Exclude roll-up artifacts.** A pipeline that uploads per-cell reports _and_ a merged report of the
-same results would count every test twice — once under its real cell, once under the roll-up. Drop
-the roll-up by name:
-
-```bash
-suitevitals collect --repo owner/web --exclude-artifact 'final-test-report'
-```
-
-Exclusion happens before download, so the roll-up costs no bandwidth either, and the count is
-surfaced in the collect summary rather than being silent.
-
-> **Migration:** adding a matrix changes the dedup key, so events collected before and after will
-> not de-duplicate against each other over an overlapping window. Test **identity** (`id`) is
-> untouched (D5), so history stays attached to the same test — only per-run duplicate detection is
-> affected. Re-collect a repo from scratch if an overlapping window matters.
-
-### Config file
-
-A `--config` file collects several repos in one invocation. Each repo is a bare `owner/name`
-or an object with per-repo overrides; the top-level `hoursBack`/`concurrency` are defaults
-applied to every repo:
-
-```json
-{
-  "hoursBack": 72,
-  "concurrency": 5,
-  "excludeTriggers": ["pull_request"],
-  "repos": [
-    "owner/web-app",
-    { "repo": "owner/api", "hoursBack": 168, "concurrency": 2, "workflow": "e2e-*" },
-    {
-      "repo": "owner/web",
-      "excludeArtifacts": ["final-test-report"],
-      "matrixFromArtifact": "results-(?<group>[^-]+)-(?<browser>[^-]+)-(?<viewport>[^-]+)"
-    }
-  ]
-}
-```
-
-A working example against three real repos ships as
-[`repos.example.json`](repos.example.json) — copy it and swap the repo names.
-
-Settings resolve most-specific-wins: a per-repo value beats the matching CLI flag
-(`--hours-back`/`--concurrency`/`--workflow`/`--exclude-trigger`/`--exclude-artifact`/
-`--matrix-from-artifact`), which beats the config-level default, which beats the built-in. A repo named on both the CLI and in the config is collected
-once. Repos share one state file and data directory; state is keyed per repo, so each has its
-own independent watermark. Filtered-out runs are policy skips: the watermark may pass them, so
-excluding a noisy workflow never stalls collection. `--exclude-trigger pull_request` is also
-the lever that keeps fork-PR-uploaded artifacts out of your data entirely.
-
-## Reporting
-
-Once events are collected, rank a repo's tests by flakiness:
-
-```bash
-suitevitals report --repo <owner/name> [options]
-```
-
-| Option                | Description                                                                                     |
-| --------------------- | ----------------------------------------------------------------------------------------------- |
-| `--repo <owner/name>` | Repository to report on (required; one repo per run).                                           |
-| `--data-dir <path>`   | Directory holding the NDJSON partitions (default `data`).                                       |
-| `--by-matrix`         | Rank each (test, matrix cell) separately instead of collapsing cells.                           |
-| `--min-runs <n>`      | Minimum runs for a test to be ranked (default 5).                                               |
-| `--since <Nd\|ISO>`   | Only include runs in the window: a span (`30d`, `12h`) or an ISO date/timestamp (`2026-06-01`). |
-| `--branch <name>`     | Only include runs on this branch (exact match, e.g. `main`).                                    |
-| `--workflow <glob>`   | Only include runs of workflows matching this glob (`*` wildcard).                               |
-| `--limit <n>`         | Show at most this many ranked tests (default 20).                                               |
-| `--all`               | Also show tests below the min-runs threshold.                                                   |
-| `--json`              | Emit JSON instead of the table.                                                                 |
-
-```
+```text
 Flaky tests · owner/repo · 3 tests
 
  SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
@@ -209,113 +62,109 @@ Flaky tests · owner/repo · 3 tests
 1 test(s) below the min-runs threshold hidden (--all to show).
 ```
 
-The **score** (0–100) treats flakiness as _inconsistency_: it blends pass-after-retry rate,
-same-commit intermittence, failure-mode diversity, and workflow re-runs. A test that always
-passes — or always fails the same way (broken, not flaky) — scores near zero. The columns show
-the signals behind the score so the ranking is explainable, not a magic number. Scores are
-colored by severity on an interactive terminal; piped output is plain, and `NO_COLOR` is honored.
+## Commands
 
-### Dashboard
+| Command                 | What it does                                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `suitevitals collect`   | Download and parse test reports into `./data` (last 72 hours on the first run, then from where it left off) |
+| `suitevitals report`    | Rank a repo's tests by flake score (`--since`, `--branch`, `--workflow`, `--by-matrix`, `--json`)           |
+| `suitevitals dashboard` | Write the same ranking as a self-contained HTML file with a sparkline per test                              |
+| `suitevitals doctor`    | Check that a repo uploads parseable reports, and print the reporter and upload YAML if not                  |
+| `suitevitals compact`   | Compress closed months to `.ndjson.zst`; the current month stays uncompressed                               |
+| `suitevitals prune`     | Delete months older than `--keep-months` (`--dry-run` to preview)                                           |
 
-Generate a self-contained HTML dashboard — a dark "vital signs" monitor, one row per test
-ranked by flake score, each with a heartbeat sparkline of its recent run outcomes:
+Run `suitevitals <command> --help` for every flag.
 
-```bash
-suitevitals dashboard --repo <owner/name> [-o out.html] [--by-matrix] [--min-runs <n>] [--since <Nd|ISO>]
-```
-
-| Option                | Description                                                           |
-| --------------------- | --------------------------------------------------------------------- |
-| `--repo <owner/name>` | Repository to report on (required; one repo per run).                 |
-| `-o, --output <path>` | Output HTML file (default `<owner>__<repo>.html`).                    |
-| `--data-dir <path>`   | Directory holding the NDJSON partitions (default `data`).             |
-| `--by-matrix`         | Rank each (test, matrix cell) separately instead of collapsing cells. |
-| `--min-runs <n>`      | Minimum runs for a test to be ranked (default 5).                     |
-| `--since <Nd\|ISO>`   | Only include runs in the window (e.g. `30d`).                         |
-| `--branch <name>`     | Only include runs on this branch (exact match, e.g. `main`).          |
-| `--workflow <glob>`   | Only include runs of workflows matching this glob (`*` wildcard).     |
-
-The output is a single HTML file with inline CSS and no runtime dependencies — open it, screenshot
-it, commit it, or host it anywhere.
-
-### Compact
-
-Closed months never change, so they can be compressed to reclaim disk (roughly 10× on JSON; the
-current month stays uncompressed for cheap appends):
+A typical first run:
 
 ```bash
-suitevitals compact [--repo <owner/name>] [--data-dir <path>]
+suitevitals doctor --repo owner/name      # will collection work for this repo?
+suitevitals collect --repo owner/name     # writes state.json and data/ in the current directory
+suitevitals report --repo owner/name      # rank the tests
+suitevitals dashboard --repo owner/name   # writes owner__name.html
 ```
 
-With no `--repo`, every repo in the data directory is compacted. Each closed month's
-`<YYYY-MM>.ndjson` becomes `<YYYY-MM>.ndjson.zst`; `report` and `dashboard` read either form
-transparently, so compaction is invisible to the rest of the tool. It is idempotent — re-running
-compacts only what is new — and crash-safe: if a month is left in both forms (a crash
-mid-compaction, or a late backfill into a compacted month), the next run merges them into one
-`.zst`, de-duplicating any overlap so nothing ever double-counts.
+Run the commands from the same directory, or pass the same `--data-dir` to each.
 
-### Prune
+### Settings that stick
 
-History grows month by month; `prune` applies a retention window by deleting partition files
-older than it:
+To collect several repos with the same options every time, list them in a JSON file and pass it
+with `--config`:
+
+```json
+{
+  "hoursBack": 72,
+  "excludeTriggers": ["pull_request"],
+  "repos": [
+    "owner/web-app",
+    { "repo": "owner/api", "hoursBack": 168, "workflow": "e2e-*" },
+    { "repo": "owner/web", "excludeArtifacts": ["final-test-report"] }
+  ]
+}
+```
 
 ```bash
-suitevitals prune --keep-months <n> [--repo <owner/name>] [--data-dir <path>] [--dry-run]
+suitevitals collect --config repos.json
 ```
 
-`--keep-months` counts the current month, so `--keep-months 12` keeps a rolling year and the
-open month always survives. With no `--repo`, every repo in the data directory is pruned;
-`--dry-run` lists what would be deleted without touching anything. Pruned months disappear from
-reports immediately; if the underlying artifacts still exist on GitHub, a later `--hours-back`
-backfill re-collects them (the dedup keys were deleted with the files).
+A repo's own settings override the command-line flags, which override the top-level defaults in
+the file. [`repos.example.json`](repos.example.json) is a working example. See the
+[CLI and config reference](docs/API-Interface-Design.md) for every key.
 
-### Doctor
+## Install
 
-Not sure a repo is set up for collection? `doctor` inspects its recent runs and tells you whether
-it uploads parseable test reports — and if not, prints the exact reporter + `upload-artifact` fix
-for the detected framework:
+Needs Node.js 24 or newer.
 
 ```bash
-suitevitals doctor --repo <owner/name>
+npx suitevitals --help                # run without installing
+npm install -g suitevitals            # or install it globally
+npm install --save-dev suitevitals    # or per project
 ```
 
-It detects the framework from the repo's manifests (Playwright, Cypress, Vitest, Jest, Mocha, or
-Java/JUnit) — including monorepos: one tree listing finds `package.json` files in shallow
-subdirectories and Java build files at any depth — and either confirms collection will work or
-hands you copy-pasteable YAML to make it work. This is the zero-to-collecting onboarding path.
+The command is `suitevitals` in every case.
 
-### Errors
+### GitHub token
 
-A failing command prints a one-line `Error: …` and exits with status 1 — including `report` or
-`dashboard` on a repo with no collected events (the message shows the directory it looked in;
-`--data-dir` defaults to `./data`, relative to where you run it). Filters that match nothing are
-not an error: `report --json` prints `[]`. Set
-`SUITEVITALS_DEBUG=1` to print the full stack trace instead, e.g. when reporting a bug.
+suitevitals looks for a token in this order:
 
-> **In short:** `collect` ingests **JUnit**, **Playwright blob**, and
-> **mochawesome** reports from one or more repos (repeatable `--repo` or a `--config` file) into
-> dedup'd monthly NDJSON partitions, in parallel with rate-limit backoff, with workflow/trigger
-> filters and a `--max-runs` cap, picks up re-runs of recent runs, and falls back to sniffing
-> unnamed artifacts (under `--max-artifact-mb`) when a run has no name match. `report` streams
-> those partitions back,
-> aggregates per-test flake signals, scores them, and prints a ranked terminal table (or JSON),
-> filterable by `--since`/`--branch`/`--workflow`; `dashboard` renders the same ranking as a
-> self-contained HTML monitor; `compact` zstd-compresses closed months; `prune` applies a
-> retention window; `doctor` diagnoses a repo's report setup, monorepos included.
+1. `--token <token>`
+2. the `GITHUB_TOKEN` environment variable
+3. `gh auth token`, if the GitHub CLI is installed and signed in
 
-## Development
+It only reads. A fine-grained token needs **Actions: read** and **Contents: read** on the repos
+you collect (`doctor` uses Contents). A classic token needs the `repo` scope for private repos and
+no scope for public ones.
 
-```bash
-npm install
-npm run dev -- collect --help   # run the CLI from source
-npm test                        # run the test suite
-npm run typecheck               # type-check without emitting
-npm run check                   # Biome: lint + format + autofix
-npm run lint                    # Biome: lint only
-npm run format                  # Biome: format only
-npm run build                   # clean dist/ and compile to it
-```
+## Supported
+
+- **Report formats**: JUnit XML (any `<testsuites>` or `<testsuite>` document, such as Maven
+  Surefire, TestNG or the Jest and Vitest JUnit reporters), Playwright blob reports, and Mochawesome JSON (Cypress, Mocha).
+- **CI**: GitHub Actions workflow artifacts.
+- **Matrix builds**: Playwright reports carry their own project name. For the other formats, the
+  cell comes from the artifact name, and `--matrix-from-artifact` can split it into named
+  dimensions such as browser and viewport.
+- **`doctor`** recognizes Playwright, Cypress, Vitest, Jest, Mocha and Java (Maven or Gradle)
+  projects, including monorepos.
+- **Output**: a terminal table, JSON, and a self-contained HTML dashboard with no runtime
+  dependencies.
+
+## Learn more
+
+- [Troubleshooting](docs/troubleshooting.md): no reports found, missing tests, token and lock
+  errors.
+- [CLI and config reference](docs/API-Interface-Design.md): every flag, its default, and the config
+  file.
+- [Stored data and dashboard reference](docs/output-reference.md): what each record and file
+  contains.
+- [Architecture](docs/Architecture.md), [technical design](docs/Technical-Design.md) and
+  [design decisions](docs/decisions/).
+- [Changelog](CHANGELOG.md) and [releases](https://github.com/adrianjiga/TestSuiteVitals/releases).
+
+## Contributing
+
+Bugs and ideas go on the [issue tracker](https://github.com/adrianjiga/TestSuiteVitals/issues).
+For the development setup and how changes get merged, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT © Adrian Jiga
+[MIT](LICENSE)
