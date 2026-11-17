@@ -1,6 +1,7 @@
-import { open, readFile, rm } from "node:fs/promises";
+import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
 
-/** Thrown when the lock is already held — another collect is running. */
+/** Thrown when the lock is already held — another suitevitals process is running. */
 export class LockError extends Error {
   override name = "LockError";
 }
@@ -53,11 +54,24 @@ export async function acquireLock(
         continue;
       }
       throw new LockError(
-        `Another collect appears to be running (lock ${path} held by pid ${holder}). ` +
+        `Another suitevitals process appears to be running (lock ${path} held by pid ${holder}). ` +
           "If that process is gone, delete the lock file and retry.",
       );
     }
   }
+}
+
+/**
+ * Locks a data directory, so `compact`/`prune` never delete a partition file that a concurrent
+ * `collect` is appending to (the appended events would vanish with the file while that collect
+ * advanced its watermark past them).
+ */
+export async function acquireDataDirLock(
+  dataDir: string,
+  options: AcquireLockOptions = {},
+): Promise<() => Promise<void>> {
+  await mkdir(dataDir, { recursive: true });
+  return acquireLock(join(dataDir, ".lock"), options);
 }
 
 /** True when `pid` is a running process; EPERM means alive but owned by another user. */

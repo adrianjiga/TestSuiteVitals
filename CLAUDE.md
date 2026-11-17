@@ -154,7 +154,8 @@ tracked by id in `pending_runs` and re-fetched by id once the window listing no 
 them, so a wide `--hours-back` can never strand one. `state.json` is written atomically
 (fsynced temp + rename). A `<state-file>.lock` single-writer lock (`src/state/lock.ts`) rejects a
 concurrent `collect` on the same state file, so the read-keys → append sequence never races
-itself; a stale lock whose recorded pid is dead is auto-broken, and SIGINT/SIGTERM release the
+itself, and a `<data-dir>/.lock` (`acquireDataDirLock`, taken by `collect`, `compact` and `prune`)
+keeps compaction or pruning from deleting a partition file mid-append; a stale lock whose recorded pid is dead is auto-broken, and SIGINT/SIGTERM release the
 lock before exiting. Error redaction (D6, `src/events/error.ts`) covers known token shapes
 (GitHub, Slack, AWS, GitLab, npm, OpenAI-style), `user:pass@` URL credentials, bare JWTs, PEM
 private-key blocks, and query-string values; truncation caps the kept first line at the budget.

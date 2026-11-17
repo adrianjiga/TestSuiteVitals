@@ -75,7 +75,8 @@ run for a repo, collection defaults to the last 72 hours; afterwards it resumes 
 stored watermark. Re-running is always safe — overlapping windows are de-duplicated.
 
 Collection is guarded against the usual hazards: a `<state-file>.lock` file rejects a second
-`collect` on the same state file (a stale lock whose recorded pid is gone is broken
+`collect` on the same state file, and a `<data-dir>/.lock` keeps `compact`/`prune` from running
+alongside a `collect` on the same data (a stale lock whose recorded pid is gone is broken
 automatically, and Ctrl-C releases the lock on the way out); an artifact that would decompress
 past a 500 MB budget is skipped and reported instead of exhausting memory — a report artifact
 already bigger than that budget is skipped before it is even downloaded; a corrupt archive or an

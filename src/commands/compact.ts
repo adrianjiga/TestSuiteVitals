@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
+import { acquireDataDirLock, LockError } from "../state/lock.js";
 import { compactRepo, listRepoSlugs } from "../store/compact.js";
 
 const DEFAULT_DATA_DIR = "data";
@@ -33,27 +34,42 @@ export const compactCommand = defineCommand({
       return;
     }
 
-    let months = 0;
-    let before = 0;
-    let after = 0;
-    for (const slug of slugs) {
-      for (const result of await compactRepo(dataDir, slug, currentMonth)) {
-        months++;
-        before += result.bytesBefore;
-        after += result.bytesAfter;
-        const saved = result.bytesBefore > 0 ? 1 - result.bytesAfter / result.bytesBefore : 0;
-        console.log(
-          `  ${palette.repo(slug)} ${result.month}: ${formatBytes(result.bytesBefore)} → ` +
-            `${formatBytes(result.bytesAfter)} ${palette.good(`(${Math.round(saved * 100)}% smaller)`)}`,
-        );
+    let release: () => Promise<void>;
+    try {
+      release = await acquireDataDirLock(dataDir);
+    } catch (error) {
+      if (error instanceof LockError) {
+        console.error(palette.bad(error.message));
+        process.exitCode = 1;
+        return;
       }
+      throw error;
     }
+    try {
+      let months = 0;
+      let before = 0;
+      let after = 0;
+      for (const slug of slugs) {
+        for (const result of await compactRepo(dataDir, slug, currentMonth)) {
+          months++;
+          before += result.bytesBefore;
+          after += result.bytesAfter;
+          const saved = result.bytesBefore > 0 ? 1 - result.bytesAfter / result.bytesBefore : 0;
+          console.log(
+            `  ${palette.repo(slug)} ${result.month}: ${formatBytes(result.bytesBefore)} → ` +
+              `${formatBytes(result.bytesAfter)} ${palette.good(`(${Math.round(saved * 100)}% smaller)`)}`,
+          );
+        }
+      }
 
-    if (months === 0) {
-      console.log(palette.dim("Nothing to compact — all closed months are already compressed."));
-      return;
+      if (months === 0) {
+        console.log(palette.dim("Nothing to compact — all closed months are already compressed."));
+        return;
+      }
+      printTotal(months, before, after, palette);
+    } finally {
+      await release();
     }
-    printTotal(months, before, after, palette);
   },
 });
 

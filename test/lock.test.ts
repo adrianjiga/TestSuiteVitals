@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { acquireLock, LockError } from "../src/state/lock.js";
+import { acquireDataDirLock, acquireLock, LockError } from "../src/state/lock.js";
 
 describe("acquireLock", () => {
   let dir: string;
@@ -59,5 +59,13 @@ describe("acquireLock", () => {
     // A garbled lock file could belong to anything — conservative: require the manual delete.
     await writeFile(path, "not-a-pid\n", "utf8");
     await expect(acquireLock(path, { isPidAlive: () => false })).rejects.toThrow(LockError);
+  });
+
+  it("locks a data directory, creating it, so a second writer is refused", async () => {
+    const dataDir = join(dir, "data");
+    const release = await acquireDataDirLock(dataDir);
+    await expect(acquireDataDirLock(dataDir)).rejects.toThrow(LockError);
+    await release();
+    await (await acquireDataDirLock(dataDir))();
   });
 });

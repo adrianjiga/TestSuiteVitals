@@ -50,7 +50,9 @@ silently.
    warned and skipped, never fatal.
 6. **Normalize & append** events with dedup; the append (and its directory) is fsynced, and state is updated only
    after it succeeds. A single-writer lock (`<state-file>.lock`) rejects a concurrent collect
-   on the same state file, so the read-keys → append sequence never races itself.
+   on the same state file, so the read-keys → append sequence never races itself; a
+   `<data-dir>/.lock`, also taken by `compact` and `prune`, keeps them from deleting a partition
+   file that a collect is appending to.
 7. **Concurrency & rate limits** — one `p-limit` pool (default 5, `--concurrency`) fetches runs
    in parallel. Backoff is handled at the transport by GitHub's official `@octokit/plugin-throttling`
    (honors primary/secondary rate-limit headers and `Retry-After`, waits then retries up to 3×) and

@@ -34,7 +34,7 @@ import {
   missingPendingIds,
   type WorkflowRun,
 } from "../github/runs.js";
-import { acquireLock, LockError } from "../state/lock.js";
+import { acquireDataDirLock, acquireLock, LockError } from "../state/lock.js";
 import { loadState, repoState, type State, saveState } from "../state/state.js";
 import { type AppendResult, appendEvents } from "../store/ndjson.js";
 import { parseRepoFlags } from "./repo-flags.js";
@@ -179,7 +179,18 @@ export const collectCommand = defineCommand({
     // read-keys → append sequence into duplicates and clobber each other's watermarks.
     let releaseLock: () => Promise<void>;
     try {
-      releaseLock = await acquireLock(`${args["state-file"]}.lock`);
+      const releaseState = await acquireLock(`${args["state-file"]}.lock`);
+      let releaseData: () => Promise<void>;
+      try {
+        releaseData = await acquireDataDirLock(args["data-dir"]);
+      } catch (error) {
+        await releaseState();
+        throw error;
+      }
+      releaseLock = async () => {
+        await releaseData();
+        await releaseState();
+      };
     } catch (error) {
       if (error instanceof LockError) {
         console.error(palette.bad(error.message));

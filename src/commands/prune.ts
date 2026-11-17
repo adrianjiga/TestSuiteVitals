@@ -1,6 +1,7 @@
 import { defineCommand } from "citty";
 import { colorSupported, createPalette, type Palette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
+import { acquireDataDirLock, LockError } from "../state/lock.js";
 import { listRepoSlugs } from "../store/compact.js";
 import { pruneCutoff, pruneRepo } from "../store/prune.js";
 
@@ -44,24 +45,39 @@ export const pruneCommand = defineCommand({
       return;
     }
 
-    const verb = args["dry-run"] ? "Would delete" : "Deleted";
-    let files = 0;
-    let bytes = 0;
-    for (const slug of slugs) {
-      for (const pruned of await pruneRepo(dataDir, slug, cutoff, args["dry-run"])) {
-        files++;
-        bytes += pruned.bytes;
-        console.log(
-          `  ${palette.repo(slug)} ${pruned.month}: ${verb} ${pruned.file} (${formatBytes(pruned.bytes)}).`,
-        );
+    let release: () => Promise<void>;
+    try {
+      release = await acquireDataDirLock(dataDir);
+    } catch (error) {
+      if (error instanceof LockError) {
+        console.error(palette.bad(error.message));
+        process.exitCode = 1;
+        return;
       }
+      throw error;
     }
+    try {
+      const verb = args["dry-run"] ? "Would delete" : "Deleted";
+      let files = 0;
+      let bytes = 0;
+      for (const slug of slugs) {
+        for (const pruned of await pruneRepo(dataDir, slug, cutoff, args["dry-run"])) {
+          files++;
+          bytes += pruned.bytes;
+          console.log(
+            `  ${palette.repo(slug)} ${pruned.month}: ${verb} ${pruned.file} (${formatBytes(pruned.bytes)}).`,
+          );
+        }
+      }
 
-    if (files === 0) {
-      console.log(palette.dim(`Nothing to prune — no partitions older than ${cutoff}.`));
-      return;
+      if (files === 0) {
+        console.log(palette.dim(`Nothing to prune — no partitions older than ${cutoff}.`));
+        return;
+      }
+      printTotal(verb, files, bytes, cutoff, palette);
+    } finally {
+      await release();
     }
-    printTotal(verb, files, bytes, cutoff, palette);
   },
 });
 
