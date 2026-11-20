@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  adviseRetries,
   detectFramework,
   diagnose,
   hasJavaBuildFile,
   packageJsonPaths,
+  type RepoSignals,
+  retryConfigPaths,
 } from "../src/doctor/diagnose.js";
 
 function pkg(deps: Record<string, string>): string {
@@ -101,5 +104,123 @@ describe("diagnose", () => {
     const result = diagnose({ artifactNames: [] });
     expect(result.framework).toBe("unknown");
     expect(result.fix?.yaml).toContain("junit");
+  });
+});
+
+describe("retryConfigPaths", () => {
+  it("picks runner configs, pom.xml files and workflows, shallowest first, capped", () => {
+    const tree = [
+      "apps/e2e/playwright.config.ts",
+      "playwright.config.ts",
+      "cypress.config.js",
+      "pom.xml",
+      "module/pom.xml",
+      ".github/workflows/ci.yml",
+      ".github/workflows/nightly.yaml",
+      "node_modules/x/playwright.config.ts",
+      "src/app.ts",
+      "docs/pom.xml.md",
+    ];
+    expect(retryConfigPaths(tree)).toEqual([
+      "cypress.config.js",
+      "playwright.config.ts",
+      "pom.xml",
+      "module/pom.xml",
+      ".github/workflows/ci.yml",
+      ".github/workflows/nightly.yaml",
+      "apps/e2e/playwright.config.ts",
+    ]);
+    const many = Array.from({ length: 20 }, (_, i) => `.github/workflows/w${i}.yml`);
+    expect(retryConfigPaths(many)).toHaveLength(8);
+  });
+});
+
+describe("adviseRetries", () => {
+  function signals(files: Record<string, string>): RepoSignals {
+    return {
+      artifactNames: [],
+      configFiles: Object.entries(files).map(([path, content]) => ({ path, content })),
+    };
+  }
+
+  it("suggests Playwright retries when the config sets none", () => {
+    const advice = adviseRetries(
+      "playwright",
+      signals({ "playwright.config.ts": "export default { reporter: 'blob', retries: 0 };" }),
+    );
+    expect(advice?.kind).toBe("suggest");
+    expect(advice?.steps.join("\n")).toMatch(/retries: process\.env\.CI \? 2 : 0/);
+  });
+
+  it("stays quiet when Playwright retries are on in the config or the workflow", () => {
+    expect(
+      adviseRetries(
+        "playwright",
+        signals({ "playwright.config.ts": "retries: process.env.CI ? 2 : 0," }),
+      ),
+    ).toBeUndefined();
+    expect(
+      adviseRetries(
+        "playwright",
+        signals({
+          "playwright.config.ts": "export default {};",
+          ".github/workflows/ci.yml": "run: npx playwright test --retries=2",
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("suggests Surefire reruns for Maven with JUnit, unless already set", () => {
+    const pom = "<dependency><artifactId>junit-jupiter</artifactId></dependency>";
+    expect(adviseRetries("java", signals({ "pom.xml": pom }))?.steps.join("\n")).toMatch(
+      /rerunFailingTestsCount/,
+    );
+    expect(
+      adviseRetries(
+        "java",
+        signals({ "pom.xml": `${pom}<rerunFailingTestsCount>2</rerunFailingTestsCount>` }),
+      ),
+    ).toBeUndefined();
+    expect(
+      adviseRetries(
+        "java",
+        signals({
+          "pom.xml": pom,
+          ".github/workflows/ci.yml": "run: mvn test -Dsurefire.rerunFailingTestsCount=2",
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("gives no Java advice for TestNG or a Gradle-only build", () => {
+    const testng = "<dependency><artifactId>testng</artifactId></dependency>";
+    expect(adviseRetries("java", signals({ "pom.xml": testng }))).toBeUndefined();
+    expect(adviseRetries("java", signals({ ".github/workflows/ci.yml": "gradle test" }))).toBe(
+      undefined,
+    );
+  });
+
+  it("warns that Cypress retries hide failures from the flake score", () => {
+    for (const config of ["retries: 2,", "retries: { runMode: 2, openMode: 0 },"]) {
+      const advice = adviseRetries("cypress", signals({ "cypress.config.js": config }));
+      expect(advice?.kind).toBe("warn");
+    }
+    expect(
+      adviseRetries("cypress", signals({ "cypress.config.js": "retries: { runMode: 0 }," })),
+    ).toBeUndefined();
+  });
+
+  it("gives no advice without readable config files or for other frameworks", () => {
+    expect(adviseRetries("playwright", { artifactNames: [] })).toBeUndefined();
+    expect(adviseRetries("jest", signals({ "jest.config.js": "" }))).toBeUndefined();
+  });
+
+  it("is attached to the diagnosis whether or not reports are uploaded", () => {
+    const base = signals({ "playwright.config.ts": "export default {};" });
+    const pw = [JSON.stringify({ devDependencies: { "@playwright/test": "1" } })];
+    expect(
+      diagnose({ ...base, packageJsons: pw, artifactNames: ["playwright-report"] }).retries?.kind,
+    ).toBe("suggest");
+    expect(diagnose({ ...base, packageJsons: pw }).retries?.kind).toBe("suggest");
   });
 });
