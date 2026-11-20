@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TestAggregate } from "../src/report/aggregate.js";
-import { parseSince, rankTests } from "../src/report/rank.js";
+import { DEFAULT_HALF_LIFE, parseHalfLife, parseSince, rankTests } from "../src/report/rank.js";
 import { withWeights } from "./helpers/aggregates.js";
 
 function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
@@ -77,6 +77,28 @@ describe("parseSince", () => {
   it("rejects a bare number instead of reading it as a date", () => {
     for (const value of ["7", "30", "2025", "6/1"]) {
       expect(() => parseSince(value, now)).toThrow(/Invalid --since/);
+    }
+  });
+});
+
+describe("parseHalfLife", () => {
+  it("defaults to 14 days", () => {
+    expect(DEFAULT_HALF_LIFE).toBe("14d");
+    expect(parseHalfLife(undefined)).toBe(14 * 86_400_000);
+  });
+
+  it("parses day and hour spans into milliseconds", () => {
+    expect(parseHalfLife("7d")).toBe(7 * 86_400_000);
+    expect(parseHalfLife("12h")).toBe(12 * 3_600_000);
+  });
+
+  it("turns weighting off with `off`", () => {
+    expect(parseHalfLife("off")).toBeUndefined();
+  });
+
+  it("rejects zero, ISO dates and garbage", () => {
+    for (const value of ["0d", "2026-06-01", "two weeks", "14"]) {
+      expect(() => parseHalfLife(value)).toThrow(/Invalid --half-life/);
     }
   });
 });

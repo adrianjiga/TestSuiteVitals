@@ -5,7 +5,7 @@ import { colorSupported, createPalette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
 import { Aggregator } from "../report/aggregate.js";
 import { type DashboardMeta, renderDashboard } from "../report/dashboard.js";
-import { parseSince, rankTests } from "../report/rank.js";
+import { DEFAULT_HALF_LIFE, parseHalfLife, parseSince, rankTests } from "../report/rank.js";
 import { noEventsError, readRepoEvents } from "../report/read.js";
 import { DEFAULT_MIN_RUNS } from "../report/score.js";
 import { repoDir } from "../store/partition.js";
@@ -45,6 +45,10 @@ export const dashboardCommand = defineCommand({
       type: "string",
       description: `Minimum runs for a test to be ranked (default ${DEFAULT_MIN_RUNS})`,
     },
+    "half-life": {
+      type: "string",
+      description: `Weight runs by age: a run this much older counts half (e.g. 7d, 12h), or off (default ${DEFAULT_HALF_LIFE})`,
+    },
     since: {
       type: "string",
       description: "Only include runs within this window: a span like 30d/12h or an ISO timestamp",
@@ -69,9 +73,14 @@ export const dashboardCommand = defineCommand({
     const slug = repoSlug(parseRepoRef(repos[0] ?? args.repo));
     const minRuns = parseMinRuns(args["min-runs"]);
     const since = parseSince(args.since);
+    const halfLifeMs = parseHalfLife(args["half-life"]);
     const workflow = parseWorkflowFlag(args.workflow);
 
-    const aggregator = new Aggregator({ byMatrix: args["by-matrix"], timeline: true });
+    const aggregator = new Aggregator({
+      byMatrix: args["by-matrix"],
+      timeline: true,
+      ...(halfLifeMs ? { halfLifeMs } : {}),
+    });
     let stored = 0;
     for await (const event of readRepoEvents(args["data-dir"], slug)) {
       stored++;
