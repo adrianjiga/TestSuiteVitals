@@ -152,18 +152,33 @@ describe("adviseRetries", () => {
     expect(advice?.steps.join("\n")).toMatch(/retries: process\.env\.CI \? 2 : 0/);
   });
 
+  it("stays quiet for a Playwright config without the blob reporter, which drops retries", () => {
+    expect(
+      adviseRetries(
+        "playwright",
+        signals({ "playwright.config.ts": "reporter: [['junit', { outputFile: 'junit.xml' }]]," }),
+      ),
+    ).toBeUndefined();
+    expect(
+      adviseRetries(
+        "playwright",
+        signals({ "playwright.config.ts": "reporter: process.env.CI ? 'blob' : 'list'," }),
+      )?.kind,
+    ).toBe("suggest");
+  });
+
   it("stays quiet when Playwright retries are on in the config or the workflow", () => {
     expect(
       adviseRetries(
         "playwright",
-        signals({ "playwright.config.ts": "retries: process.env.CI ? 2 : 0," }),
+        signals({ "playwright.config.ts": "reporter: 'blob', retries: process.env.CI ? 2 : 0," }),
       ),
     ).toBeUndefined();
     expect(
       adviseRetries(
         "playwright",
         signals({
-          "playwright.config.ts": "export default {};",
+          "playwright.config.ts": "export default { reporter: 'blob' };",
           ".github/workflows/ci.yml": "run: npx playwright test --retries=2",
         }),
       ),
@@ -216,7 +231,7 @@ describe("adviseRetries", () => {
   });
 
   it("is attached to the diagnosis whether or not reports are uploaded", () => {
-    const base = signals({ "playwright.config.ts": "export default {};" });
+    const base = signals({ "playwright.config.ts": "export default { reporter: 'blob' };" });
     const pw = [JSON.stringify({ devDependencies: { "@playwright/test": "1" } })];
     expect(
       diagnose({ ...base, packageJsons: pw, artifactNames: ["playwright-report"] }).retries?.kind,

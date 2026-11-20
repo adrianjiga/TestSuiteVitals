@@ -84,8 +84,8 @@ export interface RetryAdvice {
 }
 
 /**
- * Advises on retries only where the advice is safe: Playwright (the blob report records every
- * retry), Maven Surefire with JUnit (`rerunFailingTestsCount` writes `flakyFailure`), and a
+ * Advises on retries only where the advice is safe: Playwright with the blob reporter (it records
+ * every retry), Maven Surefire with JUnit (`rerunFailingTestsCount` writes `flakyFailure`), and a
  * warning for Cypress (the Mochawesome adapter reads one attempt per test). TestNG, Gradle and unreadable configs
  * get none. Pure over {@link RepoSignals}.
  */
@@ -97,7 +97,8 @@ export function adviseRetries(framework: Framework, signals: RepoSignals): Retry
 
   if (framework === "playwright") {
     const configs = named(/^playwright\.config\./);
-    if (configs.length === 0) {
+    // Only the blob reporter keeps every retry; with JUnit or HTML a rescued failure is a pass.
+    if (!configs.some((file) => /['"`]blob['"`]/.test(file.content))) {
       return undefined;
     }
     const inConfig = configs.some((file) =>
