@@ -3,6 +3,12 @@ import type { TestAggregate } from "./aggregate.js";
 /** Below this many eligible runs a sample is too small to rank (1-of-2 is not "50% flaky"). */
 export const DEFAULT_MIN_RUNS = 5;
 
+/**
+ * Prior strength of the confidence discount: a test needs this many runs to keep half its raw
+ * score, so 1 bad run in 5 ranks below 20 in 100.
+ */
+const CONFIDENCE_PRIOR_RUNS = 5;
+
 /** Failure-mode diversity saturates here: this many distinct fingerprints scores the signal 1.0. */
 const FINGERPRINT_CAP = 4;
 
@@ -37,8 +43,12 @@ export interface FlakeSignals {
 }
 
 export interface FlakeScore {
-  /** 0–100 flakiness score. */
+  /** 0–100 flakiness score: {@link rawScore} discounted by {@link confidence}. Ranking uses this. */
   score: number;
+  /** 0–100 blend of the signals before the small-sample discount. */
+  rawScore: number;
+  /** `eligibleRuns / (eligibleRuns + 5)`: how much of the raw score the sample size supports. */
+  confidence: number;
   /** False when `eligibleRuns < minRuns` — the score exists but the sample is too small to trust. */
   eligible: boolean;
   /** Runs with a definite outcome (passed or failed); skips are excluded. */
@@ -52,9 +62,10 @@ export interface ScoreOptions {
 }
 
 /**
- * Scores one aggregated test for flakiness (0–100). The score blends inconsistency signals; a
- * test that always passes, or always fails the same way, scores ~0. Scores below `minRuns`
- * eligible runs are still returned but flagged `eligible: false` so the report can set them aside.
+ * Scores one aggregated test for flakiness (0–100). The score blends inconsistency signals and
+ * shrinks the blend toward 0 for small samples; a test that always passes, or always fails the
+ * same way, scores ~0. Scores below `minRuns` eligible runs are still returned but flagged
+ * `eligible: false` so the report can set them aside.
  */
 export function scoreTest(aggregate: TestAggregate, options: ScoreOptions = {}): FlakeScore {
   const minRuns = options.minRuns ?? DEFAULT_MIN_RUNS;
@@ -73,8 +84,12 @@ export function scoreTest(aggregate: TestAggregate, options: ScoreOptions = {}):
     WEIGHTS.flip * signals.flipRate +
     WEIGHTS.diversity * signals.diversity;
 
+  const confidence = eligibleRuns / (eligibleRuns + CONFIDENCE_PRIOR_RUNS);
+
   return {
-    score: Math.round(raw * 100),
+    score: Math.round(raw * confidence * 100),
+    rawScore: Math.round(raw * 100),
+    confidence,
     eligible: eligibleRuns >= minRuns,
     eligibleRuns,
     signals,

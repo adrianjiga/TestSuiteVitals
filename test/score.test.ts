@@ -44,23 +44,23 @@ describe("scoreTest", () => {
   it("weights pass-after-retry the heaviest (full retry-flake → 35)", () => {
     const result = scoreTest(agg({ passed: 10, flakyRuns: 10, distinctShas: 10 }));
     expect(result.signals.retryFlakeRate).toBe(1);
-    expect(result.score).toBe(35);
+    expect(result.rawScore).toBe(35);
   });
 
   it("counts same-commit intermittence (full intermittence → 20)", () => {
     const result = scoreTest(agg({ passed: 5, failed: 5, distinctShas: 10, intermittentShas: 10 }));
     expect(result.signals.intermittenceRate).toBe(1);
-    expect(result.score).toBe(20);
+    expect(result.rawScore).toBe(20);
   });
 
   it("scales flip rate and caps it, so frequent random flips saturate it (→ 30)", () => {
     const coin = scoreTest(agg({ passed: 10, failed: 11, flips: 10, flipPairs: 20 }));
     expect(coin.signals.flipRate).toBe(1);
-    expect(coin.score).toBe(30);
+    expect(coin.rawScore).toBe(30);
     const quarter = scoreTest(agg({ passed: 10, failed: 11, flips: 5, flipPairs: 20 }));
     expect(quarter.signals.flipRate).toBe(0.75);
     // Alternating every run is still capped at 1.
-    expect(scoreTest(agg({ passed: 10, failed: 11, flips: 20, flipPairs: 20 })).score).toBe(30);
+    expect(scoreTest(agg({ passed: 10, failed: 11, flips: 20, flipPairs: 20 })).rawScore).toBe(30);
   });
 
   it("counts only failure modes beyond the first, and caps diversity", () => {
@@ -69,9 +69,27 @@ describe("scoreTest", () => {
     );
     const saturated = scoreTest(agg({ failed: 4, distinctShas: 4, fingerprints: 4 }));
     expect(saturated.signals.diversity).toBe(1);
-    expect(saturated.score).toBe(15);
+    expect(saturated.rawScore).toBe(15);
     // Beyond the cap the signal stays saturated.
-    expect(scoreTest(agg({ failed: 9, distinctShas: 9, fingerprints: 9 })).score).toBe(15);
+    expect(scoreTest(agg({ failed: 9, distinctShas: 9, fingerprints: 9 })).rawScore).toBe(15);
+  });
+
+  it("discounts small samples: confidence is n/(n+5) and scales the score", () => {
+    const five = scoreTest(agg({ passed: 5, flakyRuns: 5, distinctShas: 5 }));
+    expect(five.confidence).toBe(0.5);
+    expect(five.rawScore).toBe(35);
+    expect(five.score).toBe(18);
+    const hundred = scoreTest(agg({ passed: 100, flakyRuns: 100, distinctShas: 100 }));
+    expect(hundred.confidence).toBeCloseTo(100 / 105);
+    expect(hundred.score).toBe(33);
+    expect(scoreTest(agg()).confidence).toBe(0);
+  });
+
+  it("ranks 20 bad runs out of 100 above 1 out of 5 at the same raw rate", () => {
+    const many = scoreTest(agg({ passed: 100, flakyRuns: 20, distinctShas: 100 }));
+    const few = scoreTest(agg({ passed: 5, flakyRuns: 1, distinctShas: 5 }));
+    expect(many.rawScore).toBe(few.rawScore);
+    expect(many.score).toBeGreaterThan(few.score);
   });
 
   it("flags samples below the min-runs threshold", () => {

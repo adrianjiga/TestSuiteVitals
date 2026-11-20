@@ -41,7 +41,7 @@ describe("renderDashboard", () => {
     expect(html).toContain("<style>"); // inline CSS, self-contained
     expect(html).toContain("SUITEVITALS");
     expect(html).toContain("owner/repo");
-    expect(html).toContain("sev-mid"); // score 45 → unstable tint
+    expect(html).toContain("sev-mid"); // raw 35 × confidence 10/15 → 23, unstable tint
     expect(html).toContain("background:var(--bad)"); // the failed sparkline bar
   });
 

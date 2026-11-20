@@ -29,7 +29,7 @@ describe("rankTests", () => {
   it("ranks eligible tests by score and sets aside below-threshold ones", () => {
     const ranked = rankTests([
       agg("stable", { passed: 10, distinctShas: 10 }), // score 0
-      agg("flaky", { passed: 10, flakyRuns: 10, distinctShas: 10 }), // score 45
+      agg("flaky", { passed: 10, flakyRuns: 10, distinctShas: 10 }), // score 23
       agg("intermittent", { passed: 5, failed: 5, distinctShas: 10, intermittentShas: 10 }), // 30
       agg("tiny", { passed: 2, failed: 1, distinctShas: 3 }), // 0, but only 3 runs
     ]);
