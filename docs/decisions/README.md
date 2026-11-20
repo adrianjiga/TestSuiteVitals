@@ -46,3 +46,5 @@ that way: D5 is [0005](0005-test-identity.md), D12 is
   re-run signal, and rebalance the weights.
 - [0018-confidence-shrinkage](0018-confidence-shrinkage.md) — discount small
   samples by `n / (n + 5)` instead of relying on the hard `--min-runs` cutoff.
+- [0019-age-weighted-scoring](0019-age-weighted-scoring.md) — weight runs by
+  age with a 14-day half-life measured from the newest run.

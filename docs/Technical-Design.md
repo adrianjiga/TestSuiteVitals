@@ -462,25 +462,37 @@ without unwinding, leaving the lock to the stale-pid check.
 ### Aggregation
 
 `Aggregator.add(event)` in `src/report/aggregate.ts` folds one event at a time,
-so the event history is never held in memory: one entry per test, plus a
-bucket per commit and a small flip entry per push/schedule run. Groups are keyed by `id`, or by
-`id` plus `stableMatrix(matrix)` with `--by-matrix`. Intermittence buckets are
-always keyed by `(sha, matrix cell)`, even when cells are collapsed, so a test
-that passes on Chrome and fails on Firefox at the same commit is not counted as
-intermittent. `fingerprints` counts distinct error fingerprints across every
-attempt, not just the final one. Every passed or failed `push` and `schedule`
-event also adds `(started_at, run_attempt, failed)` to a sequence per
-`(branch, matrix cell)`; at the end each sequence is sorted and its pass↔fail
-transitions become `flips` over `flipPairs` consecutive pairs (0017). Pull
-request runs are left out, since the code changes between them. With `timeline: true` (dashboard only), each
-event also records `(started_at, outcome)` where a flaky pass is its own
-outcome; the list is sorted by time at the end.
+so the event history is never held in memory: one entry per test, plus a bucket
+per commit and a small flip entry per push/schedule run. Groups are keyed by
+`id`, or by `id` plus `stableMatrix(matrix)` with `--by-matrix`. Intermittence
+buckets are always keyed by `(sha, matrix cell)`, even when cells are
+collapsed, so a test that passes on Chrome and fails on Firefox at the same
+commit is not counted as intermittent. `fingerprints` counts distinct error
+fingerprints across every attempt, not just the final one. Every passed or
+failed `push` and `schedule` event also adds
+`(started_at, run_attempt, failed)` to a sequence per `(branch, matrix cell)`;
+at the end each sequence is sorted and its pass↔fail transitions become `flips` over `flipPairs`
+consecutive pairs (0017). Pull request runs are left out, since the code
+changes between them. With `timeline: true` (dashboard only), each event also
+records `(started_at, outcome)` where a flaky pass is its own outcome; the list
+is sorted by time at the end.
+
+With `halfLifeMs` (0019), every run weighs `2^(−age / halfLifeMs)`, its age
+measured from the newest run aggregated. That run is unknown until the end, so
+the running passed, failed and flaky weights of each group are kept relative to
+the newest run seen so far, and rescaled by `2^(−Δ / halfLifeMs)` when a newer
+run moves that reference (`rebase`). Commit buckets, fingerprints and flip
+entries record their latest start and are weighted at the end: a bucket and a
+fingerprint by their latest run, a flip pair by its later run. The results land
+in `weighted`; without a half-life every weight is 1.
 
 ### Score
 
 `scoreTest(aggregate, { minRuns })` in `src/report/score.ts`. Flaky means
 _inconsistent_: a test that always passes, or always fails the same way, fires
 none of the signals and scores 0.
+
+Every count below is read from `aggregate.weighted`:
 
 ```text
 eligibleRuns      = passed + failed                     (skips excluded)
@@ -503,7 +515,8 @@ rate p flips 2p(1−p) of the time, so the ×3 scale saturates flip rate from
 about 20% random failure, and a test that broke once and was fixed stays near 0. Confidence
 shrinks small samples toward 0 (0018): a test keeps half its raw score at 5
 runs and 89% at 40, so 1 bad run out of 5 ranks below 20 out of 100. Its prior
-strength is fixed, not tied to `minRuns`. `eligible` is
+strength is fixed, not tied to `minRuns`. The `eligible` flag and the
+displayed `eligibleRuns` use the plain count. `eligible` is
 `eligibleRuns >= minRuns` (default 5), a display filter: a test below it still
 gets a score but is set aside.
 
@@ -514,7 +527,8 @@ sorts each list by score descending, then by `eligibleRuns` descending (more
 evidence first), then by `id` for a stable order.
 
 `parseSince` accepts `Nd`, `Nh` or an ISO date/timestamp and throws on anything
-else, so a typo never silently widens the window.
+else, so a typo never silently widens the window. `parseHalfLife` accepts a
+positive `Nd` or `Nh`, or `off`, defaulting to `14d`.
 
 ## Report and dashboard rendering
 

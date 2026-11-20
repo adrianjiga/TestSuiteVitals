@@ -48,9 +48,11 @@ signals:
 | Both passed and failed on the same commit                    | 0.20   |
 | Failed in more than one way (distinct stack signatures)      | 0.15   |
 
-Skipped runs do not count. The blend is then discounted for small samples: a test keeps
-`n / (n + 5)` of it, where `n` is its passed-or-failed runs, so 1 bad run in 5 ranks below 20 in
-100. A test with fewer than 5 such runs (`--min-runs`) is scored but set aside. The report shows
+Skipped runs do not count. Recent runs count more: a run 14 days older than the newest one weighs
+half as much (`--half-life`, or `off` to weigh all runs equally), so a test that was flaky months
+ago and has passed since fades out. The blend is then discounted for small samples: a test
+keeps `n / (n + 5)` of it, where `n` is its weighted passed-or-failed runs, so 1 bad run in 5
+ranks below 20 in 100. A test with fewer than 5 such runs (`--min-runs`) is scored but set aside. The report shows
 the signals next to the score, so every ranking can be explained.
 
 ```text
@@ -65,14 +67,14 @@ Flaky tests · owner/repo · 3 tests
 
 ## Commands
 
-| Command                 | What it does                                                                                                |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `suitevitals collect`   | Download and parse test reports into `./data` (last 72 hours on the first run, then from where it left off) |
-| `suitevitals report`    | Rank a repo's tests by flake score (`--since`, `--branch`, `--workflow`, `--by-matrix`, `--json`)           |
-| `suitevitals dashboard` | Write the same ranking as a self-contained HTML file with a sparkline per test                              |
-| `suitevitals doctor`    | Check that a repo uploads parseable reports, and print the reporter and upload YAML if not                  |
-| `suitevitals compact`   | Compress closed months to `.ndjson.zst`; the current month stays uncompressed                               |
-| `suitevitals prune`     | Delete months older than `--keep-months` (`--dry-run` to preview)                                           |
+| Command                 | What it does                                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `suitevitals collect`   | Download and parse test reports into `./data` (last 72 hours on the first run, then from where it left off)      |
+| `suitevitals report`    | Rank a repo's tests by flake score (`--since`, `--half-life`, `--branch`, `--workflow`, `--by-matrix`, `--json`) |
+| `suitevitals dashboard` | Write the same ranking as a self-contained HTML file with a sparkline per test                                   |
+| `suitevitals doctor`    | Check that a repo uploads parseable reports, and print the reporter and upload YAML if not                       |
+| `suitevitals compact`   | Compress closed months to `.ndjson.zst`; the current month stays uncompressed                                    |
+| `suitevitals prune`     | Delete months older than `--keep-months` (`--dry-run` to preview)                                                |
 
 Run `suitevitals <command> --help` for every flag.
 

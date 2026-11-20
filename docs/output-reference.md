@@ -241,7 +241,7 @@ score), ignoring `--limit` and `--all`:
 | `matrix`                  | Present only with `--by-matrix`                                                                                |
 | `score`                   | `raw_score` × `confidence`, rounded; what the table shows and ranks by                                         |
 | `raw_score`               | The signal blend, 0–100, before the small-sample discount                                                      |
-| `confidence`              | `eligible_runs / (eligible_runs + 5)` (0018)                                                                   |
+| `confidence`              | `n / (n + 5)`, `n` = passed + failed runs weighted by age with `--half-life` (0018, 0019)                      |
 | `eligible`                | `eligible_runs >= --min-runs`                                                                                  |
 | `signals`                 | The four 0–1 inputs to the score; weights are in [API-Interface-Design.md](API-Interface-Design.md#flakescore) |
 | `totals.runs`             | All events for the test in the window, skips included                                                          |

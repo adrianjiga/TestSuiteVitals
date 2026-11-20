@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   push and scheduled runs, per branch and matrix cell. A test failing at random with no retries,
   on a new commit every run, now scores as flaky instead of near 0 (0017)
 - `report --json` prints `raw_score` and `confidence` next to `score`
+- `--half-life` for `report` and `dashboard`: runs count less the older they are, measured from
+  the newest run, so a test flaky months ago that has passed since fades out. Defaults to `14d`;
+  `off` weighs every run equally (0019)
 
 ### Changed
 

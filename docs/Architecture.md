@@ -101,6 +101,8 @@ state.
 3. **Aggregate** — an `Aggregator` (`src/report/aggregate.ts`) folds events
    into one `TestAggregate` per test `id`, or per `(id, matrix cell)` with
    `--by-matrix`. `dashboard` also turns on the per-test timeline.
+   `--half-life` (default `14d`) weights each run by its age from the newest
+   run (0019).
 4. **Score and rank** — `rankTests` (`src/report/rank.ts`) scores each
    aggregate with `scoreTest` (`src/report/score.ts`) and splits them into
    eligible (at least `--min-runs` decisive runs) and below-threshold sets.
@@ -217,6 +219,7 @@ scoring opinion.
 | `fingerprints`                     | Distinct error fingerprints across all attempts                     |
 | `firstSeen`, `lastSeen`            | Earliest and latest `run.started_at`                                |
 | `timeline?`                        | Outcomes sorted by run start; only when the timeline is enabled     |
+| `weighted`                         | The counts scoring reads, weighted by run age (0019)                |
 
 ### `ScoredTest` and `RankedTests` (`src/report/score.ts`, `src/report/rank.ts`)
 
