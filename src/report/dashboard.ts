@@ -1,6 +1,7 @@
 import type { RunOutcome } from "./aggregate.js";
 import { explainScore } from "./explain.js";
 import type { RankedTests, ScoredTest } from "./rank.js";
+import { retryPercent } from "./render.js";
 
 export interface DashboardMeta {
   slug: string;
@@ -94,7 +95,7 @@ ${eligibleRows}
 function row(test: ScoredTest): string {
   const { aggregate, score } = test;
   const sev = severity(score.score, score.eligible);
-  const retry = Math.round(score.signals.retryFlakeRate * 100);
+  const retry = retryPercent(test);
   const { lead, context, full } = label(test);
   return `    <div class="row ${sev}">
       <span class="score">${score.score}</span>

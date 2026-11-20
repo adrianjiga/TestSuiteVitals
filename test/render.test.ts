@@ -35,6 +35,28 @@ const ranked = rankTests([
 ]);
 
 describe("renderReport", () => {
+  it("shows RETRY% from plain counts like the other columns, not the age-weighted rate", () => {
+    const recent = rankTests([
+      agg("recent", {
+        passed: 100,
+        flakyRuns: 10,
+        distinctShas: 100,
+        weighted: {
+          passed: 25,
+          failed: 0,
+          flakyRuns: 10,
+          distinctShas: 25,
+          intermittentShas: 0,
+          flips: 0,
+          flipPairs: 0,
+          fingerprints: 0,
+        },
+      }),
+    ]);
+    const out = renderReport(recent, { slug: "o/r", totalTests: 1 }, { limit: 20, all: false });
+    expect(out.split("\n").find((line) => line.includes("recent"))).toMatch(/ 100 +10% /);
+  });
+
   it("neutralizes terminal escapes smuggled in through a test title", () => {
     const hostile = rankTests([
       agg("t", {

@@ -63,10 +63,7 @@ function row(test: ScoredTest, palette: Palette): string {
   const name = truncate(label(test), TEST_COL).padEnd(TEST_COL);
   const scoreCol = palette.score(String(score.score).padStart(5), score.score);
   const runs = palette.dim(String(score.eligibleRuns).padStart(5));
-  const retry = palette.signal(
-    `${Math.round(score.signals.retryFlakeRate * 100)}%`.padStart(6),
-    score.signals.retryFlakeRate > 0,
-  );
+  const retry = palette.signal(`${retryPercent(test)}%`.padStart(6), aggregate.flakyRuns > 0);
   const intermit = palette.signal(
     `${aggregate.intermittentShas}/${aggregate.distinctShas}`.padStart(8),
     aggregate.intermittentShas > 0,
@@ -78,6 +75,11 @@ function row(test: ScoredTest, palette: Palette): string {
   const line = ` ${scoreCol}  ${name}  ${runs}  ${retry}  ${intermit}  ${modes}`;
   const why = explainScore(aggregate, score);
   return why ? `${line}  ${palette.dim(why)}` : line;
+}
+
+/** Plain pass-after-retry share of passed + failed runs, matching the other count columns. */
+export function retryPercent({ aggregate, score }: ScoredTest): number {
+  return score.eligibleRuns > 0 ? Math.round((aggregate.flakyRuns / score.eligibleRuns) * 100) : 0;
 }
 
 /** `file › describe › test [cell]` — the matrix cell is appended only when grouping by matrix. */

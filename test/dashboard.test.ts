@@ -47,6 +47,27 @@ describe("renderDashboard", () => {
     expect(html).toContain('<span class="why">10 retry-passes</span>');
   });
 
+  it("shows retry % from plain counts, not the age-weighted rate", () => {
+    const ranked = rankTests([
+      agg("recent", {
+        passed: 100,
+        flakyRuns: 10,
+        distinctShas: 100,
+        weighted: {
+          passed: 25,
+          failed: 0,
+          flakyRuns: 10,
+          distinctShas: 25,
+          intermittentShas: 0,
+          flips: 0,
+          flipPairs: 0,
+          fingerprints: 0,
+        },
+      }),
+    ]);
+    expect(renderDashboard(ranked, meta)).toContain('<span class="sig">10%</span>');
+  });
+
   it("escapes HTML in test identifiers", () => {
     const ranked = rankTests([
       agg("x", { passed: 8, distinctShas: 8, file: "<script>", title_path: ["A & B"] }),
