@@ -48,15 +48,16 @@ signals:
 | Both passed and failed on the same commit                    | 0.20   |
 | Failed in more than one way (distinct stack signatures)      | 0.15   |
 
-Skipped runs do not count. A test with fewer than 5 runs that
-passed or failed (`--min-runs`) is scored but set aside, since the sample is too small to trust. The
-report shows the signals next to the score, so every ranking can be explained.
+Skipped runs do not count. The blend is then discounted for small samples: a test keeps
+`n / (n + 5)` of it, where `n` is its passed-or-failed runs, so 1 bad run in 5 ranks below 20 in
+100. A test with fewer than 5 such runs (`--min-runs`) is scored but set aside. The report shows
+the signals next to the score, so every ranking can be explained.
 
 ```text
 Flaky tests · owner/repo · 3 tests
 
  SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
-    40  webTables.spec.js › should delete a record          8    100%       0/8      2
+    25  webTables.spec.js › should delete a record          8    100%       0/8      2
      0  login.spec.js › remembers the session               8      0%       0/8      0
 
 1 test(s) below the min-runs threshold hidden (--all to show).

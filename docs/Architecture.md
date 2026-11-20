@@ -221,7 +221,7 @@ scoring opinion.
 ### `ScoredTest` and `RankedTests` (`src/report/score.ts`, `src/report/rank.ts`)
 
 ```ts
-FlakeScore  { score: 0..100, eligible, eligibleRuns, signals: {
+FlakeScore  { score: 0..100, rawScore, confidence, eligible, eligibleRuns, signals: {
                 retryFlakeRate, flipRate, intermittenceRate, diversity } }
 ScoredTest  { aggregate: TestAggregate, score: FlakeScore }
 RankedTests { eligible: ScoredTest[], belowThreshold: ScoredTest[] }

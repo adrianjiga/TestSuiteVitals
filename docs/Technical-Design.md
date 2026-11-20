@@ -489,16 +489,23 @@ intermittenceRate = intermittentShas / distinctShas
 flipRate          = min(1, 3 × flips / flipPairs)
 diversity         = min(fingerprints - 1, 3) / 3        (0 for 0 or 1 fingerprint)
 
-score = round(100 × (0.35·retryFlakeRate + 0.30·flipRate
-                     + 0.20·intermittenceRate + 0.15·diversity))
+raw        = 0.35·retryFlakeRate + 0.30·flipRate
+           + 0.20·intermittenceRate + 0.15·diversity
+confidence = eligibleRuns / (eligibleRuns + 5)
+
+rawScore = round(100 × raw)
+score    = round(100 × raw × confidence)
 ```
 
 Every ratio is 0 when its denominator is 0. Diversity counts only failure modes
 beyond the first and saturates at 4 distinct fingerprints. Random failure at
 rate p flips 2p(1−p) of the time, so the ×3 scale saturates flip rate from
-about 20% random failure, and a test that broke once and was fixed stays near 0. `eligible` is
-`eligibleRuns >= minRuns` (default 5); a test below the threshold still gets a
-score but is set aside, because 1 flaky run out of 2 is not evidence.
+about 20% random failure, and a test that broke once and was fixed stays near 0. Confidence
+shrinks small samples toward 0 (0018): a test keeps half its raw score at 5
+runs and 89% at 40, so 1 bad run out of 5 ranks below 20 out of 100. Its prior
+strength is fixed, not tied to `minRuns`. `eligible` is
+`eligibleRuns >= minRuns` (default 5), a display filter: a test below it still
+gets a score but is set aside.
 
 ### Ranking
 

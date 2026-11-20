@@ -173,8 +173,8 @@ Ctrl-C. A lock whose pid is no longer running is removed automatically with
 Flaky tests · acme/shop · 4 tests (last 30d)
 
  SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
-    42  tests/checkout.spec.ts › Checkout › applies a…     40     38%      9/31      3
-     5  tests/e2e/webTables.spec.js › Web Tables › sh…     40     10%      2/31      1
+    38  tests/checkout.spec.ts › Checkout › applies a…     40     38%      9/31      3
+     4  tests/e2e/webTables.spec.js › Web Tables › sh…     40     10%      2/31      1
      0  tests/login.spec.ts › Login › rejects a bad p…     40      0%      0/31      0
 
 1 test(s) below the min-runs threshold hidden (--all to show).
@@ -212,7 +212,9 @@ score), ignoring `--limit` and `--all`:
     "file": "tests/checkout.spec.ts",
     "title_path": ["Checkout", "applies a discount code"],
     "framework": "playwright",
-    "score": 42,
+    "score": 38,
+    "raw_score": 42,
+    "confidence": 0.8888888888888888,
     "eligible": true,
     "eligible_runs": 40,
     "signals": {
@@ -237,6 +239,9 @@ score), ignoring `--limit` and `--all`:
 | Field                     | Meaning                                                                                                        |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `matrix`                  | Present only with `--by-matrix`                                                                                |
+| `score`                   | `raw_score` × `confidence`, rounded; what the table shows and ranks by                                         |
+| `raw_score`               | The signal blend, 0–100, before the small-sample discount                                                      |
+| `confidence`              | `eligible_runs / (eligible_runs + 5)` (0018)                                                                   |
 | `eligible`                | `eligible_runs >= --min-runs`                                                                                  |
 | `signals`                 | The four 0–1 inputs to the score; weights are in [API-Interface-Design.md](API-Interface-Design.md#flakescore) |
 | `totals.runs`             | All events for the test in the window, skips included                                                          |

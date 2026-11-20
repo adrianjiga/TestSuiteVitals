@@ -147,7 +147,9 @@ commit does not count as intermittent. Flips are counted the same way, per
 
 | Field          | Type           | Notes                                              |
 | -------------- | -------------- | -------------------------------------------------- |
-| `score`        | `number`       | 0–100, rounded                                     |
+| `score`        | `number`       | 0–100, rounded: `rawScore` × `confidence`          |
+| `rawScore`     | `number`       | 0–100, rounded: the signal blend before discount   |
+| `confidence`   | `number`       | `eligibleRuns / (eligibleRuns + 5)` (0018)         |
 | `eligible`     | `boolean`      | `eligibleRuns >= minRuns` (default `minRuns` is 5) |
 | `eligibleRuns` | `number`       | `passed + failed`; skips do not count              |
 | `signals`      | `FlakeSignals` | The four normalized inputs, each 0–1               |
@@ -159,8 +161,10 @@ commit does not count as intermittent. Flips are counted the same way, per
 | `intermittenceRate` | 0.20   | `intermittentShas / distinctShas`                                             |
 | `diversity`         | 0.15   | `0` for zero or one fingerprint, then `(fingerprints − 1) / 3`, capped at `1` |
 
-`score = round(100 × Σ weight × signal)`. A test that always passes, or always
-fails the same way, scores close to 0: it is broken, not flaky.
+`rawScore = round(100 × Σ weight × signal)` and
+`score = round(100 × Σ weight × signal × confidence)`. A test that always
+passes, or always fails the same way, scores close to 0: it is broken, not
+flaky.
 
 `rankTests(aggregates, { minRuns })` (`src/report/rank.ts`) returns
 `{ eligible, belowThreshold }`, each a list of `{ aggregate, score }` sorted by

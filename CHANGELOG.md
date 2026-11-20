@@ -12,11 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Flip-rate flake signal: how often a test switches between pass and fail across consecutive
   push and scheduled runs, per branch and matrix cell. A test failing at random with no retries,
   on a new commit every run, now scores as flaky instead of near 0 (0017)
+- `report --json` prints `raw_score` and `confidence` next to `score`
 
 ### Changed
 
 - Flake score weights are now pass-after-retry 0.35, flip rate 0.30, same-commit intermittence
   0.20 and failure-mode diversity 0.15, so scores differ from 0.1.x for the same data
+- Flake scores are discounted for small samples by `n / (n + 5)`, so 1 bad run out of 5 ranks
+  below 20 out of 100; `--min-runs` only decides which tests are listed (0018)
 
 ### Removed
 

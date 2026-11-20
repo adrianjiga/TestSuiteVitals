@@ -99,8 +99,9 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
   _inconsistent_, so a consistently failing test scores ~0 — blending pass-after-retry (0.35),
   flip rate (0.30: pass↔fail transitions between consecutive `push`/`schedule` runs per
   `(branch, matrix cell)`, ×3 and capped at 1), same-commit intermittence (0.20) and
-  failure-mode diversity beyond the first (0.15) over passed + failed runs (0017); under `--min-runs` (default 5) is flagged
-  `eligible: false`. `rank.ts` splits and sorts; `render.ts` prints a table or `--json`. `report`
+  failure-mode diversity beyond the first (0.15) over passed + failed runs (0017), then
+  discounted by confidence `n / (n + 5)` (0018; `rawScore` keeps the undiscounted blend);
+  under `--min-runs` (default 5) is flagged `eligible: false`, a display filter only. `rank.ts` splits and sorts; `render.ts` prints a table or `--json`. `report`
   flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--branch`, `--workflow` (shared
   `matchesGlob`), `--limit`, `--all`; `dashboard` takes the same event filters.
 - `dashboard` (`src/report/dashboard.ts`): one self-contained HTML file (inline CSS, no runtime
