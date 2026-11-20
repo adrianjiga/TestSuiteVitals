@@ -89,6 +89,21 @@ describe("aggregate signals", () => {
     expect(crossCell[0]?.intermittentShas).toBe(0);
   });
 
+  it("leaves out commits where the test was only skipped, with or without a half-life", () => {
+    const events = [
+      ev({ run: { run_id: 1, sha: "a", started_at: hour(1) } }),
+      failed({ run: { run_id: 2, sha: "a", started_at: hour(2) } }),
+      ev({ status: "skipped", run: { run_id: 3, sha: "s1", started_at: hour(3) } }),
+      ev({ status: "skipped", run: { run_id: 4, sha: "s2", started_at: hour(4) } }),
+    ];
+    for (const options of [{}, { halfLifeMs: 86_400_000 }]) {
+      const [row] = aggregate(events, options);
+      expect(row?.distinctShas).toBe(1);
+      expect(row?.intermittentShas).toBe(1);
+      expect(row?.weighted.intermittentShas).toBe(row?.weighted.distinctShas);
+    }
+  });
+
   it("tracks the earliest and latest run start in the window", () => {
     const rows = aggregate([
       ev({ run: { run_id: 1, sha: "a", started_at: "2026-06-03T00:00:00Z" } }),
