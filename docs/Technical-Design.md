@@ -633,7 +633,17 @@ them to the pure `diagnose` in `src/doctor/diagnose.ts`:
 
 If any artifact name matches the report patterns, `doctor` reports success.
 Otherwise it prints the reporter setup steps and `upload-artifact` YAML for the
-detected framework. The transport's quiet logger drops Octokit's automatic
+detected framework.
+
+Either way it then prints retry advice from `adviseRetries` (0020). From the
+same tree, `retryConfigPaths` picks `playwright.config.*`, `cypress.config.*`,
+`pom.xml` and `.github/workflows/*.y(a)ml` (at most 8, shallowest first, never
+`node_modules`). The checks are text matches: a Playwright `retries:` whose
+value is not `0`, or `--retries=N` in a workflow, counts as on;
+`rerunFailingTestsCount` anywhere in a `pom.xml` or workflow counts as on, and a
+`pom.xml` mentioning TestNG gets no advice; a Cypress `retries: N` or
+`runMode: N` above 0 triggers the warning. Without a tree listing no config is
+read and no advice is given. The transport's quiet logger drops Octokit's automatic
 `… - 404 with id …` line, so expected 404s from these probes do not clutter
 the output.
 

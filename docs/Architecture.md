@@ -118,7 +118,8 @@ state.
   `--keep-months`.
 - `doctor` lists a repo's recent artifacts and manifests and, if no report
   artifact is uploaded, prints the reporter and `upload-artifact` fix for the
-  detected framework (`src/doctor/diagnose.ts`).
+  detected framework (`src/doctor/diagnose.ts`). It also reads runner configs
+  and workflows to advise on retries (0020).
 
 Flags for every command are listed in
 [API-Interface-Design.md](API-Interface-Design.md); the stored formats are in
@@ -341,4 +342,4 @@ the reasoning is in the decision records under [decisions/](decisions/).
 | `src/report/explain.ts`           | `explainScore`: the `WHY` text for a score's top signal                             |
 | `src/report/render.ts`            | Terminal table and `--json` output                                                  |
 | `src/report/dashboard.ts`         | Self-contained HTML dashboard with sparklines                                       |
-| `src/doctor/diagnose.ts`          | Framework detection, manifest path selection, per-framework fixes                   |
+| `src/doctor/diagnose.ts`          | Framework detection, manifest and config path selection, fixes, retry advice        |

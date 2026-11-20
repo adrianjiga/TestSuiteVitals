@@ -148,7 +148,8 @@ no scope for public ones.
   cell comes from the artifact name, and `--matrix-from-artifact` can split it into named
   dimensions such as browser and viewport.
 - **`doctor`** recognizes Playwright, Cypress, Vitest, Jest, Mocha and Java (Maven or Gradle)
-  projects, including monorepos.
+  projects, including monorepos. For Playwright and Maven with JUnit it suggests turning on
+  retries when they are off, and for Cypress it warns that retries hide rescued failures.
 - **Output**: a terminal table, JSON, and a self-contained HTML dashboard with no runtime
   dependencies.
 

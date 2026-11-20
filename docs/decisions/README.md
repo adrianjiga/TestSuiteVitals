@@ -48,3 +48,6 @@ that way: D5 is [0005](0005-test-identity.md), D12 is
   samples by `n / (n + 5)` instead of relying on the hard `--min-runs` cutoff.
 - [0019-age-weighted-scoring](0019-age-weighted-scoring.md) — weight runs by
   age with a 14-day half-life measured from the newest run.
+- [0020-retry-advice-only-where-recorded](0020-retry-advice-only-where-recorded.md)
+  — `doctor` suggests retries for Playwright and Maven + JUnit, and warns for
+  Cypress, whose reports keep one attempt.

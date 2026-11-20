@@ -364,3 +364,18 @@ The check is by artifact name: an artifact counts when its name contains
 workflow YAML to add for the detected framework (`playwright`, `cypress`,
 `vitest`, `jest`, `mocha` or `java`), or generic JUnit XML advice when the
 framework is `unknown`.
+
+After that, `doctor` may add retry advice (0020). For a Playwright project
+whose config and workflows set no retries:
+
+```text
+  Turn on Playwright retries: a pass after a retry is the strongest flake signal.
+  In playwright.config.ts:
+    retries: process.env.CI ? 2 : 0,
+```
+
+Maven projects using JUnit get the same suggestion for Surefire's
+`rerunFailingTestsCount`. A Cypress project with retries on gets
+`⚠ Cypress retries are on, but suitevitals reads only the final attempt from
+Mochawesome.` instead, since a failure that a retry rescued is stored as a
+pass.
