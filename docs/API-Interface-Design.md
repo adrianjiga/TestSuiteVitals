@@ -343,9 +343,9 @@ the repo's `package.json` files (up to five, `node_modules` excluded) or a Java
 build file (`pom.xml`, `build.gradle`, `build.gradle.kts`). When no artifact
 matches, it prints the reporter setup and `actions/upload-artifact` YAML for
 that framework: Playwright, Cypress, Vitest, Jest, Mocha, Java, or generic
-JUnit XML. Either way it reads up to 8 runner configs, `pom.xml` files and
-workflows and, where each retry is recorded, suggests turning retries on
-(Playwright, Maven with JUnit) or warns that they hide rescued failures
+JUnit XML. Either way it reads up to 6 runner configs and `pom.xml` files and
+up to 4 workflows and, where each retry is recorded, suggests turning retries
+on (Playwright with the blob reporter, Maven with JUnit) or warns that they hide rescued failures
 (Cypress) (0020). It writes nothing.
 
 ### Environment variables

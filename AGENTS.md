@@ -123,9 +123,10 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
   (`detectFramework` → fix table) over signals from `src/github/contents.ts`: one git-trees listing
   finds monorepo `package.json` files (`packageJsonPaths`: shallow, capped at 5, no
   `node_modules`) and Java build files, falling back to root-only probes for huge/empty repos.
-  `retryConfigPaths` adds runner configs, `pom.xml` and workflows (at most 8), and
-  `adviseRetries` suggests retries only where each attempt is recorded (Playwright, Maven +
-  JUnit) and warns for Cypress, whose Mochawesome reports keep one attempt (0020).
+  `retryConfigPaths` adds runner configs and `pom.xml` (at most 6), then workflows (at most 4),
+  and `adviseRetries` suggests retries only where each attempt is recorded (Playwright with the
+  blob reporter, Maven + JUnit) and warns for Cypress, whose Mochawesome reports keep one
+  attempt (0020).
 - Color (`src/colors.ts`): a semantic `Palette` over picocolors; `createPalette(false)` is a no-op,
   so renderers take an injected palette and default to plain. Color is applied _after_ padding;
   `--json` is never colored. Artifact-derived text goes through `terminalSafe` before printing;

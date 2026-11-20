@@ -18,8 +18,10 @@ could only cut history off at a hard edge.
   fade. A test that has not run since others did fades too.
 - `TestAggregate` keeps its plain counts and adds `weighted`, the counts
   scoring reads: passed, failed and pass-after-retry runs weigh by their own
-  start; a commit bucket by its latest run; a flip pair by its later run; a
-  failure fingerprint by the latest run it appeared in. Without a half-life,
+  start; a commit bucket by its latest passed or failed run; a flip pair by its
+  later run; a failure fingerprint by the latest run it appeared in. A run
+  whose start does not parse counts as infinitely old, so its weight never
+  depends on read order. Without a half-life,
   `weighted` equals the counts.
 - Confidence (0018) uses the weighted passed + failed runs, so a test whose
   runs are mostly old loses confidence as well as rate.

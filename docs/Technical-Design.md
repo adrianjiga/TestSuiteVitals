@@ -482,9 +482,13 @@ measured from the newest run aggregated. That run is unknown until the end, so
 the running passed, failed and flaky weights of each group are kept relative to
 the newest run seen so far, and rescaled by `2^(−Δ / halfLifeMs)` when a newer
 run moves that reference (`rebase`). Commit buckets, fingerprints and flip
-entries record their latest start and are weighted at the end: a bucket and a
-fingerprint by their latest run, a flip pair by its later run. The results land
-in `weighted`; without a half-life every weight is 1.
+entries record their latest start and are weighted at the end: a bucket by its
+latest passed or failed run (a skip does not make a commit recent), a
+fingerprint by its latest run, a flip pair by its later run. Flip sequences are
+ordered by the parsed start, not the timestamp text. A run whose start does not
+parse counts as infinitely old: weight 0 with a half-life, 1 without, whatever
+the read order. The results land in `weighted`; without a half-life every
+weight is 1.
 
 ### Score
 
@@ -637,9 +641,12 @@ detected framework.
 
 Either way it then prints retry advice from `adviseRetries` (0020). From the
 same tree, `retryConfigPaths` picks `playwright.config.*`, `cypress.config.*`,
-`pom.xml` and `.github/workflows/*.y(a)ml` (at most 8, shallowest first, never
-`node_modules`). The checks are text matches: a Playwright `retries:` whose
-value is not `0`, or `--retries=N` in a workflow, counts as on;
+and `pom.xml` (at most 6), then `.github/workflows/*.y(a)ml` (at most 4, capped
+apart so workflows never crowd out a config), shallowest first, never
+`node_modules`. The checks are text matches: Playwright gets advice only when a
+config names the `blob` reporter, since JUnit and HTML reports keep only the
+final attempt; there a `retries:` whose value is not `0`, or `--retries=N` in a
+workflow, counts as on;
 `rerunFailingTestsCount` anywhere in a `pom.xml` or workflow counts as on, and a
 `pom.xml` mentioning TestNG gets no advice; a Cypress `retries: N` or
 `runMode: N` above 0 triggers the warning. Without a tree listing no config is

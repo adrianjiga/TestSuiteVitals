@@ -18,8 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `off` weighs every run equally (0019)
 - A `WHY` column in `report` and the dashboard naming the signal worth the most points, such as
   `flips 9/40` or `3 retry-passes`; `--json` adds it as `top_signal` and `reason`
-- `doctor` reads runner configs and workflows and suggests turning on retries for Playwright and
-  Maven with JUnit, where each attempt is recorded; for Cypress with retries on it warns that a
+- `doctor` reads runner configs and workflows and suggests turning on retries for Playwright
+  with the blob reporter and Maven with JUnit, where each attempt is recorded; for Cypress with retries on it warns that a
   failure a retry rescued is stored as a pass (0020)
 
 ### Changed
