@@ -212,7 +212,7 @@ scoring opinion.
 | `passed`, `failed`, `skipped`      | Final status counts                                                 |
 | `flakyRuns`                        | Events with `flaky: true` (passed after retry)                      |
 | `retriedRuns`                      | Events with more than one attempt                                   |
-| `rerunRuns`                        | Events with `run.run_attempt > 1`                                   |
+| `flips`, `flipPairs`               | Pass↔fail transitions over push/schedule run pairs (0017)           |
 | `distinctShas`, `intermittentShas` | `(sha, matrix cell)` buckets seen, and those with a pass and a fail |
 | `fingerprints`                     | Distinct error fingerprints across all attempts                     |
 | `firstSeen`, `lastSeen`            | Earliest and latest `run.started_at`                                |
@@ -222,7 +222,7 @@ scoring opinion.
 
 ```ts
 FlakeScore  { score: 0..100, eligible, eligibleRuns, signals: {
-                retryFlakeRate, intermittenceRate, rerunRate, diversity } }
+                retryFlakeRate, flipRate, intermittenceRate, diversity } }
 ScoredTest  { aggregate: TestAggregate, score: FlakeScore }
 RankedTests { eligible: ScoredTest[], belowThreshold: ScoredTest[] }
 ```

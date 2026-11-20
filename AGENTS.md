@@ -96,9 +96,10 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
 - Reporting (`src/report/`): `read.ts` streams events line by line, oldest month first (0003);
   `aggregate.ts` folds them into one `TestAggregate` per `id` (or `(id, matrix)` with
   `--by-matrix`) holding raw signals only; `score.ts` gives a 0–100 flake score — flaky means
-  _inconsistent_, so a consistently failing test scores ~0 — blending pass-after-retry (0.45),
-  same-commit intermittence (0.30), failure-mode diversity beyond the first (0.15) and workflow
-  re-run rate (0.10) over passed + failed runs; under `--min-runs` (default 5) is flagged
+  _inconsistent_, so a consistently failing test scores ~0 — blending pass-after-retry (0.35),
+  flip rate (0.30: pass↔fail transitions between consecutive `push`/`schedule` runs per
+  `(branch, matrix cell)`, ×3 and capped at 1), same-commit intermittence (0.20) and
+  failure-mode diversity beyond the first (0.15) over passed + failed runs (0017); under `--min-runs` (default 5) is flagged
   `eligible: false`. `rank.ts` splits and sorts; `render.ts` prints a table or `--json`. `report`
   flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--branch`, `--workflow` (shared
   `matchesGlob`), `--limit`, `--all`; `dashboard` takes the same event filters.
@@ -159,6 +160,9 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
   repo parse, state, glob matching, partitioning, prune cutoff, extract, fetch orchestration,
   redaction, fingerprint, adapters, event build, dedup, watermark, NDJSON append, manifest-path
   selection, flag parsing.
+- `test/helpers/events.ts` builds `TestEvent`s (`ev`, `failed`, `hour`) and a seeded PRNG
+  (`seeded`). Scoring behaviour is pinned by scenario fixtures in `test/score.test.ts` that run
+  event streams through `aggregate()` → `scoreTest()`; a formula change must keep them passing.
 - Only the raw Octokit calls are left to integration: `listRunsSince`, `getRun`,
   `listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`, `listAttemptStarts`,
   `listRecentCompletedRuns`.

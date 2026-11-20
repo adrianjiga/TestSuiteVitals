@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Flip-rate flake signal: how often a test switches between pass and fail across consecutive
+  push and scheduled runs, per branch and matrix cell. A test failing at random with no retries,
+  on a new commit every run, now scores as flaky instead of near 0 (0017)
+
+### Changed
+
+- Flake score weights are now pass-after-retry 0.35, flip rate 0.30, same-commit intermittence
+  0.20 and failure-mode diversity 0.15, so scores differ from 0.1.x for the same data
+
+### Removed
+
+- The workflow re-run signal, which raised the score of every healthy test caught in a "re-run
+  all jobs"; `--json` no longer has `signals.rerunRate` and gains `signals.flipRate`
+
 ## [0.1.1] - 2026-11-17
 
 ### Security

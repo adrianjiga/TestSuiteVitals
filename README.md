@@ -41,12 +41,12 @@ Each test gets a score from 0 to 100. Flaky means _inconsistent_, so a test that
 or always fails the same way (broken, not flaky), scores near zero. The score blends four
 signals:
 
-| Signal                                                  | Weight |
-| ------------------------------------------------------- | ------ |
-| Passed only after a retry                               | 0.45   |
-| Both passed and failed on the same commit               | 0.30   |
-| Failed in more than one way (distinct stack signatures) | 0.15   |
-| The workflow run was re-run                             | 0.10   |
+| Signal                                                       | Weight |
+| ------------------------------------------------------------ | ------ |
+| Passed only after a retry                                    | 0.35   |
+| Flipped between pass and fail across push and scheduled runs | 0.30   |
+| Both passed and failed on the same commit                    | 0.20   |
+| Failed in more than one way (distinct stack signatures)      | 0.15   |
 
 Skipped runs do not count. A test with fewer than 5 runs that
 passed or failed (`--min-runs`) is scored but set aside, since the sample is too small to trust. The
@@ -56,7 +56,7 @@ report shows the signals next to the score, so every ranking can be explained.
 Flaky tests · owner/repo · 3 tests
 
  SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
-    50  webTables.spec.js › should delete a record          8    100%       0/8      2
+    40  webTables.spec.js › should delete a record          8    100%       0/8      2
      0  login.spec.js › remembers the session               8      0%       0/8      0
 
 1 test(s) below the min-runs threshold hidden (--all to show).

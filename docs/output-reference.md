@@ -173,8 +173,8 @@ Ctrl-C. A lock whose pid is no longer running is removed automatically with
 Flaky tests · acme/shop · 4 tests (last 30d)
 
  SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
-    36  tests/checkout.spec.ts › Checkout › applies a…     40     38%      9/31      3
-     6  tests/e2e/webTables.spec.js › Web Tables › sh…     40     10%      2/31      1
+    42  tests/checkout.spec.ts › Checkout › applies a…     40     38%      9/31      3
+     5  tests/e2e/webTables.spec.js › Web Tables › sh…     40     10%      2/31      1
      0  tests/login.spec.ts › Login › rejects a bad p…     40      0%      0/31      0
 
 1 test(s) below the min-runs threshold hidden (--all to show).
@@ -212,13 +212,13 @@ score), ignoring `--limit` and `--all`:
     "file": "tests/checkout.spec.ts",
     "title_path": ["Checkout", "applies a discount code"],
     "framework": "playwright",
-    "score": 36,
+    "score": 42,
     "eligible": true,
     "eligible_runs": 40,
     "signals": {
       "retryFlakeRate": 0.375,
+      "flipRate": 0.45,
       "intermittenceRate": 0.2903225806451613,
-      "rerunRate": 0.05,
       "diversity": 0.6666666666666666
     },
     "totals": {

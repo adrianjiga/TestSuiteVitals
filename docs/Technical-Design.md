@@ -462,12 +462,17 @@ without unwinding, leaving the lock to the stale-pid check.
 ### Aggregation
 
 `Aggregator.add(event)` in `src/report/aggregate.ts` folds one event at a time,
-so memory is one entry per test, not per event. Groups are keyed by `id`, or by
+so the event history is never held in memory: one entry per test, plus a
+bucket per commit and a small flip entry per push/schedule run. Groups are keyed by `id`, or by
 `id` plus `stableMatrix(matrix)` with `--by-matrix`. Intermittence buckets are
 always keyed by `(sha, matrix cell)`, even when cells are collapsed, so a test
 that passes on Chrome and fails on Firefox at the same commit is not counted as
 intermittent. `fingerprints` counts distinct error fingerprints across every
-attempt, not just the final one. With `timeline: true` (dashboard only), each
+attempt, not just the final one. Every passed or failed `push` and `schedule`
+event also adds `(started_at, run_attempt, failed)` to a sequence per
+`(branch, matrix cell)`; at the end each sequence is sorted and its pass↔fail
+transitions become `flips` over `flipPairs` consecutive pairs (0017). Pull
+request runs are left out, since the code changes between them. With `timeline: true` (dashboard only), each
 event also records `(started_at, outcome)` where a flaky pass is its own
 outcome; the list is sorted by time at the end.
 
@@ -481,15 +486,17 @@ none of the signals and scores 0.
 eligibleRuns      = passed + failed                     (skips excluded)
 retryFlakeRate    = flakyRuns        / eligibleRuns
 intermittenceRate = intermittentShas / distinctShas
-rerunRate         = rerunRuns        / eligibleRuns
+flipRate          = min(1, 3 × flips / flipPairs)
 diversity         = min(fingerprints - 1, 3) / 3        (0 for 0 or 1 fingerprint)
 
-score = round(100 × (0.45·retryFlakeRate + 0.30·intermittenceRate
-                     + 0.10·rerunRate     + 0.15·diversity))
+score = round(100 × (0.35·retryFlakeRate + 0.30·flipRate
+                     + 0.20·intermittenceRate + 0.15·diversity))
 ```
 
 Every ratio is 0 when its denominator is 0. Diversity counts only failure modes
-beyond the first and saturates at 4 distinct fingerprints. `eligible` is
+beyond the first and saturates at 4 distinct fingerprints. Random failure at
+rate p flips 2p(1−p) of the time, so the ×3 scale saturates flip rate from
+about 20% random failure, and a test that broke once and was fixed stays near 0. `eligible` is
 `eligibleRuns >= minRuns` (default 5); a test below the threshold still gets a
 score but is set aside, because 1 flaky run out of 2 is not evidence.
 

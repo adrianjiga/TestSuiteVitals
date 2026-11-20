@@ -126,7 +126,8 @@ row per test `id`, or per `(id, matrix)` with `byMatrix`.
 | `skipped`          | `number`                 |                                                                                                              |
 | `flakyRuns`        | `number`                 | Events with `flaky: true` (passed after a failed retry)                                                      |
 | `retriedRuns`      | `number`                 | Events with more than one attempt                                                                            |
-| `rerunRuns`        | `number`                 | Events with `run.run_attempt > 1` (a workflow re-run)                                                        |
+| `flips`            | `number`                 | Pass↔fail transitions between consecutive push/schedule runs of one `(branch, matrix cell)`                  |
+| `flipPairs`        | `number`                 | Consecutive push/schedule run pairs `flips` was counted over                                                 |
 | `distinctShas`     | `number`                 | Distinct `(sha, matrix cell)` buckets                                                                        |
 | `intermittentShas` | `number`                 | Buckets that saw both a pass and a fail                                                                      |
 | `fingerprints`     | `number`                 | Distinct error fingerprints across all attempts                                                              |
@@ -136,7 +137,9 @@ row per test `id`, or per `(id, matrix)` with `byMatrix`.
 
 Intermittence is always keyed on `(sha, matrix cell)`, even when rows are
 collapsed, so a test that passes on Chrome and fails on Firefox at the same
-commit does not count as intermittent.
+commit does not count as intermittent. Flips are counted the same way, per
+`(branch, matrix cell)` sequence ordered by `started_at` then `run_attempt`
+(0017).
 
 ### FlakeScore
 
@@ -151,10 +154,10 @@ commit does not count as intermittent.
 
 | Signal              | Weight | Definition                                                                    |
 | ------------------- | ------ | ----------------------------------------------------------------------------- |
-| `retryFlakeRate`    | 0.45   | `flakyRuns / eligibleRuns`                                                    |
-| `intermittenceRate` | 0.30   | `intermittentShas / distinctShas`                                             |
+| `retryFlakeRate`    | 0.35   | `flakyRuns / eligibleRuns`                                                    |
+| `flipRate`          | 0.30   | `3 × flips / flipPairs`, capped at `1`                                        |
+| `intermittenceRate` | 0.20   | `intermittentShas / distinctShas`                                             |
 | `diversity`         | 0.15   | `0` for zero or one fingerprint, then `(fingerprints − 1) / 3`, capped at `1` |
-| `rerunRate`         | 0.10   | `rerunRuns / eligibleRuns`                                                    |
 
 `score = round(100 × Σ weight × signal)`. A test that always passes, or always
 fails the same way, scores close to 0: it is broken, not flaky.
