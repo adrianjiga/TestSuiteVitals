@@ -1,38 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { RunContext, TestEvent } from "../src/events/event.js";
 import { aggregate } from "../src/report/aggregate.js";
-
-/** Builds a TestEvent with sensible defaults; `run` is merged shallowly over the default run. */
-function ev(over: Partial<Omit<TestEvent, "run">> & { run?: Partial<RunContext> } = {}): TestEvent {
-  const { run, ...rest } = over;
-  return {
-    schema_version: 1,
-    id: "t1",
-    file: "a.spec.ts",
-    title_path: ["A", "does x"],
-    framework: "junit",
-    source: "artifact",
-    status: "passed",
-    flaky: false,
-    duration_ms: 10,
-    attempts: [{ n: 1, status: "passed", duration_ms: 10 }],
-    matrix: {},
-    collected_at: "2026-06-01T00:00:00Z",
-    ...rest,
-    run: {
-      provider: "github",
-      repo: "o/r",
-      run_id: 1,
-      run_attempt: 1,
-      workflow: "ci.yml",
-      branch: "main",
-      sha: "sha1",
-      trigger: "push",
-      started_at: "2026-06-01T00:00:00Z",
-      ...run,
-    },
-  };
-}
+import { ev } from "./helpers/events.js";
 
 describe("aggregate grouping", () => {
   it("collapses matrix cells into one row by default", () => {
