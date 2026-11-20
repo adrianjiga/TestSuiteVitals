@@ -167,6 +167,16 @@ describe("aggregate flips", () => {
     expect(rows[0]?.flipPairs).toBe(2);
   });
 
+  it("orders runs by time, not by how their timestamps are written", () => {
+    const rows = aggregate([
+      ev({ run: { run_id: 1, sha: "a", started_at: "2026-06-01T10:00:00Z" } }),
+      // 11:30 UTC, though it sorts first as text.
+      failed({ run: { run_id: 2, sha: "b", started_at: "2026-06-01T09:30:00-02:00" } }),
+      ev({ run: { run_id: 3, sha: "c", started_at: "2026-06-01T12:00:00.000Z" } }),
+    ]);
+    expect(rows[0]?.flips).toBe(2);
+  });
+
   it("orders a re-run after its first attempt when both share a start time", () => {
     const rows = aggregate([
       ev({ run: { run_id: 1, run_attempt: 2, sha: "a", started_at: hour(1) } }),
