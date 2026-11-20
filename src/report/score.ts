@@ -57,6 +57,8 @@ export interface FlakeScore {
   /** Runs with a definite outcome (passed or failed); skips are excluded. */
   eligibleRuns: number;
   signals: FlakeSignals;
+  /** The signal contributing the most points; unset when none contributes. */
+  topSignal?: keyof FlakeSignals;
 }
 
 export interface ScoreOptions {
@@ -83,11 +85,16 @@ export function scoreTest(aggregate: TestAggregate, options: ScoreOptions = {}):
     diversity: diversity(weighted.fingerprints),
   };
 
-  const raw =
-    WEIGHTS.retryFlake * signals.retryFlakeRate +
-    WEIGHTS.intermittence * signals.intermittenceRate +
-    WEIGHTS.flip * signals.flipRate +
-    WEIGHTS.diversity * signals.diversity;
+  const contributions: [keyof FlakeSignals, number][] = [
+    ["retryFlakeRate", WEIGHTS.retryFlake * signals.retryFlakeRate],
+    ["flipRate", WEIGHTS.flip * signals.flipRate],
+    ["intermittenceRate", WEIGHTS.intermittence * signals.intermittenceRate],
+    ["diversity", WEIGHTS.diversity * signals.diversity],
+  ];
+  const raw = contributions.reduce((sum, [, points]) => sum + points, 0);
+  const [topSignal, topPoints] = contributions.reduce((best, entry) =>
+    entry[1] > best[1] ? entry : best,
+  );
 
   const confidence = weightedRuns / (weightedRuns + CONFIDENCE_PRIOR_RUNS);
 
@@ -98,6 +105,7 @@ export function scoreTest(aggregate: TestAggregate, options: ScoreOptions = {}):
     eligible: eligibleRuns >= minRuns,
     eligibleRuns,
     signals,
+    ...(topPoints > 0 ? { topSignal } : {}),
   };
 }
 

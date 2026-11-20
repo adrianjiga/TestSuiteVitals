@@ -93,6 +93,14 @@ describe("scoreTest", () => {
     expect(many.score).toBeGreaterThan(few.score);
   });
 
+  it("records the signal worth the most points as topSignal", () => {
+    expect(scoreTest(agg({ passed: 10, distinctShas: 10 })).topSignal).toBeUndefined();
+    const flaky = scoreTest(
+      agg({ passed: 20, failed: 20, flakyRuns: 2, flips: 10, flipPairs: 39, distinctShas: 40 }),
+    );
+    expect(flaky.topSignal).toBe("flipRate");
+  });
+
   it("flags samples below the min-runs threshold", () => {
     const small = agg({ passed: 2, failed: 1, distinctShas: 3 });
     expect(scoreTest(small).eligible).toBe(false);
