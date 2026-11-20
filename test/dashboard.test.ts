@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { RunOutcome, TestAggregate } from "../src/report/aggregate.js";
 import { renderDashboard } from "../src/report/dashboard.js";
 import { rankTests } from "../src/report/rank.js";
+import { withWeights } from "./helpers/aggregates.js";
 
 function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
-  return {
+  return withWeights({
     id,
     file: "e2e/app.spec.js",
     title_path: ["App", id],
@@ -23,7 +24,7 @@ function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
     firstSeen: "2026-06-01T00:00:00Z",
     lastSeen: "2026-06-02T00:00:00Z",
     ...over,
-  };
+  });
 }
 
 const meta = { slug: "owner/repo", totalTests: 1, generatedAt: "2026-06-28T00:00:00Z" };

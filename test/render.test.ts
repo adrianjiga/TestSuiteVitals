@@ -3,9 +3,10 @@ import { createPalette } from "../src/colors.js";
 import type { TestAggregate } from "../src/report/aggregate.js";
 import { rankTests } from "../src/report/rank.js";
 import { renderReport, renderReportJson } from "../src/report/render.js";
+import { withWeights } from "./helpers/aggregates.js";
 
 function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
-  return {
+  return withWeights({
     id,
     file: "a.spec.ts",
     title_path: ["A", id],
@@ -24,7 +25,7 @@ function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
     firstSeen: "2026-06-01T00:00:00Z",
     lastSeen: "2026-06-01T00:00:00Z",
     ...over,
-  };
+  });
 }
 
 const ranked = rankTests([

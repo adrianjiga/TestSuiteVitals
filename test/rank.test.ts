@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { TestAggregate } from "../src/report/aggregate.js";
 import { parseSince, rankTests } from "../src/report/rank.js";
+import { withWeights } from "./helpers/aggregates.js";
 
 function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
-  return {
+  return withWeights({
     id,
     file: "a.spec.ts",
     title_path: ["A", id],
@@ -22,7 +23,7 @@ function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
     firstSeen: "2026-06-01T00:00:00Z",
     lastSeen: "2026-06-01T00:00:00Z",
     ...over,
-  };
+  });
 }
 
 describe("rankTests", () => {

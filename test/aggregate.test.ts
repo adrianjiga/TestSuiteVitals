@@ -177,3 +177,70 @@ describe("aggregate flips", () => {
     expect(rows[0]?.flipPairs).toBe(2);
   });
 });
+
+describe("aggregate age weighting", () => {
+  const DAY = 86_400_000;
+  const day = (n: number) => hour(24 * n);
+
+  it("weights every run 1 when no half-life is set", () => {
+    const [row] = aggregate([
+      failed({ run: { run_id: 1, sha: "a", started_at: day(0) } }),
+      ev({ run: { run_id: 2, sha: "b", started_at: day(30) } }),
+    ]);
+    expect(row?.weighted).toEqual({
+      passed: 1,
+      failed: 1,
+      flakyRuns: 0,
+      distinctShas: 2,
+      intermittentShas: 0,
+      flips: 1,
+      flipPairs: 1,
+      fingerprints: 1,
+    });
+  });
+
+  it("halves a run's weight per half-life of age, whatever the input order", () => {
+    const events = [
+      failed({ run: { run_id: 1, sha: "a", started_at: day(0) } }),
+      ev({ run: { run_id: 2, sha: "b", started_at: day(1) } }),
+      ev({ flaky: true, run: { run_id: 3, sha: "c", started_at: day(2) } }),
+    ];
+    for (const order of [events, [...events].reverse()]) {
+      const [row] = aggregate(order, { halfLifeMs: DAY });
+      expect(row?.passed).toBe(2);
+      expect(row?.weighted.passed).toBe(1.5);
+      expect(row?.weighted.failed).toBe(0.25);
+      expect(row?.weighted.flakyRuns).toBe(1);
+    }
+  });
+
+  it("measures age from the newest run of any test, so a test not run lately fades", () => {
+    const rows = aggregate(
+      [
+        ev({ id: "old", run: { run_id: 1, sha: "a", started_at: day(0) } }),
+        ev({ id: "new", run: { run_id: 2, sha: "b", started_at: day(2) } }),
+      ],
+      { halfLifeMs: DAY },
+    );
+    expect(rows.find((r) => r.id === "old")?.weighted.passed).toBe(0.25);
+    expect(rows.find((r) => r.id === "new")?.weighted.passed).toBe(1);
+  });
+
+  it("weights commits, failure modes and flip pairs by their latest run", () => {
+    const [row] = aggregate(
+      [
+        failed({ run: { run_id: 1, sha: "a", started_at: day(0) } }, "fp1"),
+        ev({ run: { run_id: 2, sha: "a", started_at: day(1) } }),
+        failed({ run: { run_id: 3, sha: "b", started_at: day(2) } }, "fp2"),
+      ],
+      { halfLifeMs: DAY },
+    );
+    // Commit a (latest day 1) is intermittent; commit b (day 2) is not.
+    expect(row?.weighted.distinctShas).toBe(1.5);
+    expect(row?.weighted.intermittentShas).toBe(0.5);
+    // fp1 last seen on day 0 (0.25), fp2 on day 2 (1). expect(row?.weighted.fingerprints).toBe(1.25);
+    // fail → pass (day 1, weight 0.5) → fail (day 2, weight 1): both pairs flip.
+    expect(row?.weighted.flipPairs).toBe(1.5);
+    expect(row?.weighted.flips).toBe(1.5);
+  });
+});

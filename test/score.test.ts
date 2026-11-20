@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { aggregate, type TestAggregate } from "../src/report/aggregate.js";
 import { FLAKY_AT } from "../src/report/dashboard.js";
 import { scoreTest } from "../src/report/score.js";
+import { withWeights } from "./helpers/aggregates.js";
 import { ev, failed, hour, seeded } from "./helpers/events.js";
 
 /** Builds a TestAggregate with all-zero signals; override only what a case exercises. */
 function agg(over: Partial<TestAggregate> = {}): TestAggregate {
-  return {
+  return withWeights({
     id: "t1",
     file: "a.spec.ts",
     title_path: ["A", "x"],
@@ -25,7 +26,7 @@ function agg(over: Partial<TestAggregate> = {}): TestAggregate {
     firstSeen: "2026-06-01T00:00:00Z",
     lastSeen: "2026-06-01T00:00:00Z",
     ...over,
-  };
+  });
 }
 
 describe("scoreTest", () => {
