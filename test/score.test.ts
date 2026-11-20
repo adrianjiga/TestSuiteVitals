@@ -86,6 +86,30 @@ describe("scoreTest", () => {
     expect(scoreTest(agg()).confidence).toBe(0);
   });
 
+  it("bases confidence on the real run count, so age weighting never caps it", () => {
+    const weekly = scoreTest(
+      agg({
+        passed: 50,
+        failed: 50,
+        flips: 50,
+        flipPairs: 99,
+        distinctShas: 100,
+        weighted: {
+          passed: 1.7,
+          failed: 1.7,
+          flakyRuns: 0,
+          distinctShas: 3.4,
+          intermittentShas: 0,
+          flips: 1.7,
+          flipPairs: 3.4,
+          fingerprints: 1,
+        },
+      }),
+    );
+    expect(weekly.confidence).toBeCloseTo(100 / 105);
+    expect(weekly.score).toBeGreaterThanOrEqual(FLAKY_AT);
+  });
+
   it("ranks 20 bad runs out of 100 above 1 out of 5 at the same raw rate", () => {
     const many = scoreTest(agg({ passed: 100, flakyRuns: 20, distinctShas: 100 }));
     const few = scoreTest(agg({ passed: 5, flakyRuns: 1, distinctShas: 5 }));

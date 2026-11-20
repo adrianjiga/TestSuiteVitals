@@ -47,10 +47,7 @@ export interface FlakeScore {
   score: number;
   /** 0–100 blend of the signals before the small-sample discount. */
   rawScore: number;
-  /**
-   * `n / (n + 5)` over the age-weighted passed + failed runs: how much of the raw score the
-   * sample supports. Old runs count for less, so a test not run lately loses confidence.
-   */
+  /** `eligibleRuns / (eligibleRuns + 5)`: how much of the raw score the sample size supports. */
   confidence: number;
   /** False when `eligibleRuns < minRuns` — the score exists but the sample is too small to trust. */
   eligible: boolean;
@@ -96,7 +93,7 @@ export function scoreTest(aggregate: TestAggregate, options: ScoreOptions = {}):
     entry[1] > best[1] ? entry : best,
   );
 
-  const confidence = weightedRuns / (weightedRuns + CONFIDENCE_PRIOR_RUNS);
+  const confidence = eligibleRuns / (eligibleRuns + CONFIDENCE_PRIOR_RUNS);
 
   return {
     score: Math.round(raw * confidence * 100),
