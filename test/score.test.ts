@@ -120,8 +120,11 @@ describe("scoreTest", () => {
 });
 
 /** Scores the single row (or the row matching `cell`) an event stream aggregates into. */
-function scoreOf(events: ReturnType<typeof ev>[], cell?: string) {
-  const rows = aggregate(events, { byMatrix: cell !== undefined });
+function scoreOf(events: ReturnType<typeof ev>[], cell?: string, halfLifeMs?: number) {
+  const rows = aggregate(events, {
+    byMatrix: cell !== undefined,
+    ...(halfLifeMs ? { halfLifeMs } : {}),
+  });
   const row = cell === undefined ? rows[0] : rows.find((r) => r.matrix?.browser === cell);
   if (!row) {
     throw new Error("no row");
@@ -168,6 +171,25 @@ describe("scoring scenarios", () => {
       ev({ run: { run_id: i + 1, run_attempt: 2, sha: `c${i}`, started_at: hour(2 * i + 1) } }),
     ]).flat();
     expect(scoreOf(events).score).toBe(0);
+  });
+
+  it("flaky three months ago, 200 passes since → low with a 14-day half-life", () => {
+    const fourteenDays = 14 * 86_400_000;
+    // 100 runs a day apart failing at random, then 200 passes over the next three months.
+    const events = [...randomOutcomes(100, 0.25, 3), ...Array(200).fill(true)].map((pass, i) => {
+      const over = {
+        run: {
+          run_id: i + 1,
+          sha: `c${i}`,
+          started_at: hour(i < 100 ? 24 * i : 2400 + 11 * (i - 100)),
+        },
+      };
+      return pass ? ev(over) : failed(over);
+    });
+    const undecayed = scoreOf(events);
+    const decayed = scoreOf(events, undefined, fourteenDays);
+    expect(undecayed.score).toBeGreaterThanOrEqual(5);
+    expect(decayed.score).toBeLessThan(2);
   });
 
   it("flaky in one matrix cell only → flagged in that cell with --by-matrix", () => {

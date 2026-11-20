@@ -47,7 +47,10 @@ export interface FlakeScore {
   score: number;
   /** 0–100 blend of the signals before the small-sample discount. */
   rawScore: number;
-  /** `eligibleRuns / (eligibleRuns + 5)`: how much of the raw score the sample size supports. */
+  /**
+   * `n / (n + 5)` over the age-weighted passed + failed runs: how much of the raw score the
+   * sample supports. Old runs count for less, so a test not run lately loses confidence.
+   */
   confidence: number;
   /** False when `eligibleRuns < minRuns` — the score exists but the sample is too small to trust. */
   eligible: boolean;
@@ -70,12 +73,14 @@ export interface ScoreOptions {
 export function scoreTest(aggregate: TestAggregate, options: ScoreOptions = {}): FlakeScore {
   const minRuns = options.minRuns ?? DEFAULT_MIN_RUNS;
   const eligibleRuns = aggregate.passed + aggregate.failed;
+  const weighted = aggregate.weighted;
+  const weightedRuns = weighted.passed + weighted.failed;
 
   const signals: FlakeSignals = {
-    retryFlakeRate: ratio(aggregate.flakyRuns, eligibleRuns),
-    intermittenceRate: ratio(aggregate.intermittentShas, aggregate.distinctShas),
-    flipRate: Math.min(1, FLIP_SCALE * ratio(aggregate.flips, aggregate.flipPairs)),
-    diversity: diversity(aggregate.fingerprints),
+    retryFlakeRate: ratio(weighted.flakyRuns, weightedRuns),
+    intermittenceRate: ratio(weighted.intermittentShas, weighted.distinctShas),
+    flipRate: Math.min(1, FLIP_SCALE * ratio(weighted.flips, weighted.flipPairs)),
+    diversity: diversity(weighted.fingerprints),
   };
 
   const raw =
@@ -84,7 +89,7 @@ export function scoreTest(aggregate: TestAggregate, options: ScoreOptions = {}):
     WEIGHTS.flip * signals.flipRate +
     WEIGHTS.diversity * signals.diversity;
 
-  const confidence = eligibleRuns / (eligibleRuns + CONFIDENCE_PRIOR_RUNS);
+  const confidence = weightedRuns / (weightedRuns + CONFIDENCE_PRIOR_RUNS);
 
   return {
     score: Math.round(raw * confidence * 100),
@@ -100,7 +105,10 @@ function ratio(numerator: number, denominator: number): number {
   return denominator > 0 ? numerator / denominator : 0;
 }
 
-/** Only failure modes *beyond the first* are suspicious: one consistent mode scores 0. */
+/**
+ * Only failure modes *beyond the first* are suspicious: one consistent mode scores 0. With age
+ * weighting `fingerprints` is fractional, as old modes fade out.
+ */
 function diversity(fingerprints: number): number {
   if (fingerprints <= 1) {
     return 0;
