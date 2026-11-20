@@ -103,6 +103,8 @@ export function renderReportJson(ranked: RankedTests): string {
     framework: test.aggregate.framework,
     ...(test.aggregate.matrix ? { matrix: test.aggregate.matrix } : {}),
     score: test.score.score,
+    raw_score: test.score.rawScore,
+    confidence: test.score.confidence,
     eligible: test.score.eligible,
     eligible_runs: test.score.eligibleRuns,
     signals: test.score.signals,

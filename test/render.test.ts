@@ -86,7 +86,8 @@ describe("renderReportJson", () => {
     const rows = JSON.parse(renderReportJson(ranked)) as Array<{ id: string; eligible: boolean }>;
     expect(rows.map((r) => r.id)).toEqual(["flaky", "stable", "tiny"]);
     // 10 runs give confidence 10/15, so the raw 35 is shown as 23.
-    expect(rows[0]).toMatchObject({ id: "flaky", score: 23, eligible: true });
+    expect(rows[0]).toMatchObject({ id: "flaky", score: 23, raw_score: 35, eligible: true });
+    expect(rows[0]).toHaveProperty("confidence", 10 / 15);
     expect(rows.at(-1)).toMatchObject({ id: "tiny", eligible: false });
   });
 });
