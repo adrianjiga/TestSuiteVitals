@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { TestAggregate } from "../src/report/aggregate.js";
+import { aggregate, type TestAggregate } from "../src/report/aggregate.js";
+import { FLAKY_AT } from "../src/report/dashboard.js";
 import { scoreTest } from "../src/report/score.js";
+import { ev, failed, hour, seeded } from "./helpers/events.js";
 
 /** Builds a TestAggregate with all-zero signals; override only what a case exercises. */
 function agg(over: Partial<TestAggregate> = {}): TestAggregate {
@@ -95,5 +97,66 @@ describe("scoreTest", () => {
     expect(flaky.score).toBeGreaterThan(broken.score);
     expect(broken.score).toBe(0);
     expect(stable.score).toBe(0);
+  });
+});
+
+/** Scores the single row (or the row matching `cell`) an event stream aggregates into. */
+function scoreOf(events: ReturnType<typeof ev>[], cell?: string) {
+  const rows = aggregate(events, { byMatrix: cell !== undefined });
+  const row = cell === undefined ? rows[0] : rows.find((r) => r.matrix?.browser === cell);
+  if (!row) {
+    throw new Error("no row");
+  }
+  return scoreTest(row);
+}
+
+/** One push run per hour on main, each on a new commit, with no retries. */
+function pushes(outcomes: boolean[], browser?: string) {
+  return outcomes.map((pass, i) => {
+    const over = {
+      ...(browser ? { matrix: { browser } } : {}),
+      run: { run_id: i + 1, sha: `c${i}`, started_at: hour(i) },
+    };
+    return pass ? ev(over) : failed(over);
+  });
+}
+
+function randomOutcomes(runs: number, failRate: number, seed: number): boolean[] {
+  const rand = seeded(seed);
+  return Array.from({ length: runs }, () => rand() >= failRate);
+}
+
+describe("scoring scenarios", () => {
+  it("always fails → ~0 (broken, not flaky)", () => {
+    expect(scoreOf(pushes(Array(40).fill(false))).score).toBe(0);
+  });
+
+  it("broke once, then fixed → low", () => {
+    const outcomes = [...Array(30).fill(true), ...Array(10).fill(false), ...Array(30).fill(true)];
+    expect(scoreOf(pushes(outcomes)).score).toBeLessThan(5);
+  });
+
+  it("25% random failures, a new commit every run, no retries → flaky", () => {
+    const result = scoreOf(pushes(randomOutcomes(200, 0.25, 7)));
+    expect(result.signals.retryFlakeRate).toBe(0);
+    expect(result.signals.intermittenceRate).toBe(0);
+    expect(result.score).toBeGreaterThanOrEqual(FLAKY_AT);
+  });
+
+  it("healthy test caught in a 're-run all jobs' → 0", () => {
+    const events = Array.from({ length: 10 }, (_, i) => [
+      ev({ run: { run_id: i + 1, run_attempt: 1, sha: `c${i}`, started_at: hour(2 * i) } }),
+      ev({ run: { run_id: i + 1, run_attempt: 2, sha: `c${i}`, started_at: hour(2 * i + 1) } }),
+    ]).flat();
+    expect(scoreOf(events).score).toBe(0);
+  });
+
+  it("flaky in one matrix cell only → flagged in that cell with --by-matrix", () => {
+    const events = [
+      ...pushes(Array(100).fill(true), "chrome"),
+      ...pushes(randomOutcomes(100, 0.25, 11), "firefox"),
+    ];
+    expect(scoreOf(events, "chrome").score).toBe(0);
+    expect(scoreOf(events, "firefox").score).toBeGreaterThanOrEqual(FLAKY_AT);
   });
 });

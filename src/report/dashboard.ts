@@ -11,7 +11,7 @@ export interface DashboardMeta {
 }
 
 /** Score at or above which a test counts as flaky in the header tally and gets a warning tint. */
-const FLAKY_AT = 20;
+export const FLAKY_AT = 20;
 /** Most recent outcomes to draw in a sparkline. */
 const SPARK_MAX = 24;
 
