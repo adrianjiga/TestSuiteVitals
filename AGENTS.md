@@ -102,7 +102,8 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
   failure-mode diversity beyond the first (0.15) over passed + failed runs (0017), then
   discounted by confidence `n / (n + 5)` (0018; `rawScore` keeps the undiscounted blend). Scoring
   reads `aggregate.weighted`: each run weighs `2^(−age / half-life)` from the newest run (0019,
-  `--half-life`, default `14d`, `off` disables), while `RUNS`/`eligibleRuns` stay real counts;
+  `--half-life`, default `14d`, `off` disables), while confidence and the `RUNS`, `RETRY%` and
+  `INTERMIT` columns use real counts;
   under `--min-runs` (default 5) is flagged `eligible: false`, a display filter only. `rank.ts`
   splits and sorts; `render.ts` prints a table or `--json`, both with `explain.ts`'s `WHY` text
   for the score's `topSignal`. `report` flags: `--by-matrix`,

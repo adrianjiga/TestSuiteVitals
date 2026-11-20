@@ -128,7 +128,7 @@ row per test `id`, or per `(id, matrix)` with `byMatrix`.
 | `retriedRuns`      | `number`                 | Events with more than one attempt                                                                            |
 | `flips`            | `number`                 | Pass↔fail transitions between consecutive push/schedule runs of one `(branch, matrix cell)`                  |
 | `flipPairs`        | `number`                 | Consecutive push/schedule run pairs `flips` was counted over                                                 |
-| `distinctShas`     | `number`                 | Distinct `(sha, matrix cell)` buckets                                                                        |
+| `distinctShas`     | `number`                 | Distinct `(sha, matrix cell)` buckets with a pass or a fail                                                  |
 | `intermittentShas` | `number`                 | Buckets that saw both a pass and a fail                                                                      |
 | `fingerprints`     | `number`                 | Distinct error fingerprints across all attempts                                                              |
 | `firstSeen`        | `string`                 | Earliest `run.started_at`                                                                                    |
@@ -146,15 +146,15 @@ commit does not count as intermittent. Flips are counted the same way, per
 
 `scoreTest(aggregate, { minRuns })` in `src/report/score.ts`.
 
-| Field          | Type                  | Notes                                                |
-| -------------- | --------------------- | ---------------------------------------------------- |
-| `score`        | `number`              | 0–100, rounded: `rawScore` × `confidence`            |
-| `rawScore`     | `number`              | 0–100, rounded: the signal blend before discount     |
-| `confidence`   | `number`              | `n / (n + 5)`, `n` = weighted passed + failed (0018) |
-| `eligible`     | `boolean`             | `eligibleRuns >= minRuns` (default `minRuns` is 5)   |
-| `eligibleRuns` | `number`              | `passed + failed`; skips do not count                |
-| `signals`      | `FlakeSignals`        | The four normalized inputs, each 0–1                 |
-| `topSignal`    | `keyof FlakeSignals?` | The signal worth the most points; unset at 0         |
+| Field          | Type                  | Notes                                              |
+| -------------- | --------------------- | -------------------------------------------------- |
+| `score`        | `number`              | 0–100, rounded: `rawScore` × `confidence`          |
+| `rawScore`     | `number`              | 0–100, rounded: the signal blend before discount   |
+| `confidence`   | `number`              | `eligibleRuns / (eligibleRuns + 5)` (0018)         |
+| `eligible`     | `boolean`             | `eligibleRuns >= minRuns` (default `minRuns` is 5) |
+| `eligibleRuns` | `number`              | `passed + failed`; skips do not count              |
+| `signals`      | `FlakeSignals`        | The four normalized inputs, each 0–1               |
+| `topSignal`    | `keyof FlakeSignals?` | The signal worth the most points; unset at 0       |
 
 | Signal              | Weight | Definition                                                                    |
 | ------------------- | ------ | ----------------------------------------------------------------------------- |
@@ -164,8 +164,9 @@ commit does not count as intermittent. Flips are counted the same way, per
 | `diversity`         | 0.15   | `0` for zero or one fingerprint, then `(fingerprints − 1) / 3`, capped at `1` |
 
 `rawScore = round(100 × Σ weight × signal)` and
-`score = round(100 × Σ weight × signal × confidence)`. Every signal and `n`
-are computed from `aggregate.weighted`; `eligibleRuns` stays the plain count. A test that always
+`score = round(100 × Σ weight × signal × confidence)`. Every signal is
+computed from `aggregate.weighted`; `eligibleRuns` and `confidence` use the
+plain count. A test that always
 passes, or always fails the same way, scores close to 0: it is broken, not
 flaky.
 

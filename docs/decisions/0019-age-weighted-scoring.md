@@ -23,9 +23,11 @@ could only cut history off at a hard edge.
   whose start does not parse counts as infinitely old, so its weight never
   depends on read order. Without a half-life,
   `weighted` equals the counts.
-- Confidence (0018) uses the weighted passed + failed runs, so a test whose
-  runs are mostly old loses confidence as well as rate.
-- The `RUNS` column, `eligible_runs` and `--min-runs` keep the real count.
+- Confidence (0018), the `RUNS` column, `RETRY%`, `INTERMIT`, `eligible_runs`
+  and `--min-runs` use the real counts. Weighting confidence too would cap it
+  for tests that run rarely: with a 14-day half-life a daily test could never
+  pass about 0.8 and a weekly one about 0.4, however long its history. Old
+  flakiness still fades, through the rates.
 - Streaming (0003) does not know the newest run until the end, so the running
   passed/failed/flaky weights are kept relative to the newest run seen so far
   and rescaled when a newer one arrives. Weights never exceed 1, so nothing

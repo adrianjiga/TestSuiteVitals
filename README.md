@@ -51,8 +51,8 @@ signals:
 Skipped runs do not count. Recent runs count more: a run 14 days older than the newest one weighs
 half as much (`--half-life`, or `off` to weigh all runs equally), so a test that was flaky months
 ago and has passed since fades out. The blend is then discounted for small samples: a test keeps
-`n / (n + 5)` of it, where `n` is its weighted passed-or-failed runs, so 1 bad run in 5 ranks below
-20 in 100. A test with fewer than 5 such runs (`--min-runs`) is scored but set aside. The report
+`n / (n + 5)` of it, where `n` is its passed-or-failed runs, so 1 bad run in 5 ranks below 20 in
+100. A test with fewer than 5 such runs (`--min-runs`) is scored but set aside. The report
 shows the signals next to the score, and a `WHY` column names the one worth the most points (for
 example `flips 9/40` or `3 retry-passes`), so every ranking can be explained.
 
@@ -149,7 +149,8 @@ no scope for public ones.
   dimensions such as browser and viewport.
 - **`doctor`** recognizes Playwright, Cypress, Vitest, Jest, Mocha and Java (Maven or Gradle)
   projects, including monorepos. For Playwright with the blob reporter and Maven with JUnit it
-  suggests turning on retries when they are off, and for Cypress it warns that retries hide rescued failures.
+  suggests turning on retries when they are off, and for Cypress it warns that retries hide rescued
+  failures.
 - **Output**: a terminal table, JSON, and a self-contained HTML dashboard with no runtime
   dependencies.
 

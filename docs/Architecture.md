@@ -216,7 +216,7 @@ scoring opinion.
 | `flakyRuns`                        | Events with `flaky: true` (passed after retry)                      |
 | `retriedRuns`                      | Events with more than one attempt                                   |
 | `flips`, `flipPairs`               | Pass↔fail transitions over push/schedule run pairs (0017)           |
-| `distinctShas`, `intermittentShas` | `(sha, matrix cell)` buckets seen, and those with a pass and a fail |
+| `distinctShas`, `intermittentShas` | `(sha, matrix cell)` buckets with a pass or fail, and any with both |
 | `fingerprints`                     | Distinct error fingerprints across all attempts                     |
 | `firstSeen`, `lastSeen`            | Earliest and latest `run.started_at`                                |
 | `timeline?`                        | Outcomes sorted by run start; only when the timeline is enabled     |

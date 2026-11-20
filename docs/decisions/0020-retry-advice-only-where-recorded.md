@@ -27,11 +27,13 @@ is not always good for suitevitals:
   crowd out a config), from the tree listing, shallowest first, never
   `node_modules`; `doctor` reads them into `RepoSignals.configFiles`.
 - `adviseRetries` (pure) returns:
-  - `suggest` for Playwright when a config names the `blob` reporter, no
-    config sets a non-zero `retries` and no workflow passes `--retries=N`;
+  - `suggest` for Playwright when a config names the `blob` reporter or a
+    workflow passes `--reporter=blob`, no config sets `retries` to anything
+    but `0` and no workflow passes `--retries=N`;
   - `suggest` for Maven when no `pom.xml` uses TestNG and neither the poms nor
     the workflows mention `rerunFailingTestsCount`;
-  - `warn` for Cypress when the config sets non-zero `retries` or `runMode`;
+  - `warn` for Cypress when the config sets `retries` or `runMode` to
+    anything but a literal `0`, expressions included;
   - nothing otherwise, including when no config could be read.
 - The advice is printed whether or not the repo already uploads reports.
 

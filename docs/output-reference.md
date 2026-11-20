@@ -189,7 +189,7 @@ The heading shows the repo, the number of tests scored, and the active
 | `TEST`     | `file › suite › test`, cut to 46 characters. With `--by-matrix`, the cell is appended as `[key=value,…]` |
 | `RUNS`     | Runs that passed or failed (skips excluded): the evidence behind the score                               |
 | `RETRY%`   | Share of those runs that passed only after a failed retry                                                |
-| `INTERMIT` | Commits (per matrix cell) that both passed and failed / commits seen                                     |
+| `INTERMIT` | Commits (per matrix cell) that both passed and failed / commits with a pass or fail                      |
 | `MODES`    | Distinct failure fingerprints. More than one means the test fails in different ways                      |
 | `WHY`      | The signal worth the most points, with its counts (below). Empty for a score of 0                        |
 
@@ -249,7 +249,7 @@ score), ignoring `--limit` and `--all`:
 | `raw_score`               | The signal blend, 0–100, before the small-sample discount                                                      |
 | `top_signal`              | The `signals` key worth the most points, or `null` when none contributes                                       |
 | `reason`                  | The table's `WHY` text; empty when `top_signal` is `null`                                                      |
-| `confidence`              | `n / (n + 5)`, `n` = passed + failed runs weighted by age with `--half-life` (0018, 0019)                      |
+| `confidence`              | `eligible_runs / (eligible_runs + 5)` (0018)                                                                   |
 | `eligible`                | `eligible_runs >= --min-runs`                                                                                  |
 | `signals`                 | The four 0–1 inputs to the score; weights are in [API-Interface-Design.md](API-Interface-Design.md#flakescore) |
 | `totals.runs`             | All events for the test in the window, skips included                                                          |

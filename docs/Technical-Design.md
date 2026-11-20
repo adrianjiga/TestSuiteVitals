@@ -496,11 +496,11 @@ weight is 1.
 _inconsistent_: a test that always passes, or always fails the same way, fires
 none of the signals and scores 0.
 
-Every count below is read from `aggregate.weighted`:
+Every count below except `eligibleRuns` is read from `aggregate.weighted`:
 
 ```text
-eligibleRuns      = passed + failed                     (skips excluded)
-retryFlakeRate    = flakyRuns        / eligibleRuns
+eligibleRuns      = passed + failed                     (plain counts, skips excluded)
+retryFlakeRate    = flakyRuns        / (passed + failed)
 intermittenceRate = intermittentShas / distinctShas
 flipRate          = min(1, 3 × flips / flipPairs)
 diversity         = min(fingerprints - 1, 3) / 3        (0 for 0 or 1 fingerprint)
@@ -644,12 +644,13 @@ same tree, `retryConfigPaths` picks `playwright.config.*`, `cypress.config.*`,
 and `pom.xml` (at most 6), then `.github/workflows/*.y(a)ml` (at most 4, capped
 apart so workflows never crowd out a config), shallowest first, never
 `node_modules`. The checks are text matches: Playwright gets advice only when a
-config names the `blob` reporter, since JUnit and HTML reports keep only the
-final attempt; there a `retries:` whose value is not `0`, or `--retries=N` in a
-workflow, counts as on;
+config names the `blob` reporter or a workflow passes `--reporter=blob`, since
+JUnit and HTML reports keep only the final attempt; there a `retries:` whose
+value is not `0`, or `--retries=N` in a workflow, counts as on;
 `rerunFailingTestsCount` anywhere in a `pom.xml` or workflow counts as on, and a
-`pom.xml` mentioning TestNG gets no advice; a Cypress `retries: N` or
-`runMode: N` above 0 triggers the warning. Without a tree listing no config is
+`pom.xml` mentioning TestNG gets no advice; a Cypress `retries:` or `runMode:`
+with any value other than a literal `0` (an expression such as
+`process.env.CI ? 2 : 0` included) triggers the warning. Without a tree listing no config is
 read and no advice is given. The transport's quiet logger drops Octokit's automatic
 `… - 404 with id …` line, so expected 404s from these probes do not clutter
 the output.
