@@ -101,6 +101,8 @@ state.
 3. **Aggregate** — an `Aggregator` (`src/report/aggregate.ts`) folds events
    into one `TestAggregate` per test `id`, or per `(id, matrix cell)` with
    `--by-matrix`. `dashboard` also turns on the per-test timeline.
+   `--half-life` (default `14d`) weights each run by its age from the newest
+   run (0019).
 4. **Score and rank** — `rankTests` (`src/report/rank.ts`) scores each
    aggregate with `scoreTest` (`src/report/score.ts`) and splits them into
    eligible (at least `--min-runs` decisive runs) and below-threshold sets.
@@ -116,7 +118,8 @@ state.
   `--keep-months`.
 - `doctor` lists a repo's recent artifacts and manifests and, if no report
   artifact is uploaded, prints the reporter and `upload-artifact` fix for the
-  detected framework (`src/doctor/diagnose.ts`).
+  detected framework (`src/doctor/diagnose.ts`). It also reads runner configs
+  and workflows to advise on retries (0020).
 
 Flags for every command are listed in
 [API-Interface-Design.md](API-Interface-Design.md); the stored formats are in
@@ -212,17 +215,18 @@ scoring opinion.
 | `passed`, `failed`, `skipped`      | Final status counts                                                 |
 | `flakyRuns`                        | Events with `flaky: true` (passed after retry)                      |
 | `retriedRuns`                      | Events with more than one attempt                                   |
-| `rerunRuns`                        | Events with `run.run_attempt > 1`                                   |
-| `distinctShas`, `intermittentShas` | `(sha, matrix cell)` buckets seen, and those with a pass and a fail |
+| `flips`, `flipPairs`               | Pass↔fail transitions over push/schedule run pairs (0017)           |
+| `distinctShas`, `intermittentShas` | `(sha, matrix cell)` buckets with a pass or fail, and any with both |
 | `fingerprints`                     | Distinct error fingerprints across all attempts                     |
 | `firstSeen`, `lastSeen`            | Earliest and latest `run.started_at`                                |
 | `timeline?`                        | Outcomes sorted by run start; only when the timeline is enabled     |
+| `weighted`                         | The counts scoring reads, weighted by run age (0019)                |
 
 ### `ScoredTest` and `RankedTests` (`src/report/score.ts`, `src/report/rank.ts`)
 
 ```ts
-FlakeScore  { score: 0..100, eligible, eligibleRuns, signals: {
-                retryFlakeRate, intermittenceRate, rerunRate, diversity } }
+FlakeScore  { score: 0..100, rawScore, confidence, eligible, eligibleRuns, signals: {
+                retryFlakeRate, flipRate, intermittenceRate, diversity }, topSignal? }
 ScoredTest  { aggregate: TestAggregate, score: FlakeScore }
 RankedTests { eligible: ScoredTest[], belowThreshold: ScoredTest[] }
 ```
@@ -335,6 +339,7 @@ the reasoning is in the decision records under [decisions/](decisions/).
 | `src/report/aggregate.ts`         | `Aggregator` and `TestAggregate`                                                    |
 | `src/report/score.ts`             | `scoreTest`, weights, `DEFAULT_MIN_RUNS`                                            |
 | `src/report/rank.ts`              | `rankTests`, `parseSince`                                                           |
+| `src/report/explain.ts`           | `explainScore`: the `WHY` text for a score's top signal                             |
 | `src/report/render.ts`            | Terminal table and `--json` output                                                  |
 | `src/report/dashboard.ts`         | Self-contained HTML dashboard with sparklines                                       |
-| `src/doctor/diagnose.ts`          | Framework detection, manifest path selection, per-framework fixes                   |
+| `src/doctor/diagnose.ts`          | Framework detection, manifest and config path selection, fixes, retry advice        |

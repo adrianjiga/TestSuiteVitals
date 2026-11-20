@@ -96,11 +96,18 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
 - Reporting (`src/report/`): `read.ts` streams events line by line, oldest month first (0003);
   `aggregate.ts` folds them into one `TestAggregate` per `id` (or `(id, matrix)` with
   `--by-matrix`) holding raw signals only; `score.ts` gives a 0–100 flake score — flaky means
-  _inconsistent_, so a consistently failing test scores ~0 — blending pass-after-retry (0.45),
-  same-commit intermittence (0.30), failure-mode diversity beyond the first (0.15) and workflow
-  re-run rate (0.10) over passed + failed runs; under `--min-runs` (default 5) is flagged
-  `eligible: false`. `rank.ts` splits and sorts; `render.ts` prints a table or `--json`. `report`
-  flags: `--by-matrix`, `--min-runs`, `--since <Nd|ISO>`, `--branch`, `--workflow` (shared
+  _inconsistent_, so a consistently failing test scores ~0 — blending pass-after-retry (0.35),
+  flip rate (0.30: pass↔fail transitions between consecutive `push`/`schedule` runs per
+  `(branch, matrix cell)`, ×3 and capped at 1), same-commit intermittence (0.20) and
+  failure-mode diversity beyond the first (0.15) over passed + failed runs (0017), then
+  discounted by confidence `n / (n + 5)` (0018; `rawScore` keeps the undiscounted blend). Scoring
+  reads `aggregate.weighted`: each run weighs `2^(−age / half-life)` from the newest run (0019,
+  `--half-life`, default `14d`, `off` disables), while confidence and the `RUNS`, `RETRY%` and
+  `INTERMIT` columns use real counts;
+  under `--min-runs` (default 5) is flagged `eligible: false`, a display filter only. `rank.ts`
+  splits and sorts; `render.ts` prints a table or `--json`, both with `explain.ts`'s `WHY` text
+  for the score's `topSignal`. `report` flags: `--by-matrix`,
+  `--min-runs`, `--since <Nd|ISO>`, `--half-life`, `--branch`, `--workflow` (shared
   `matchesGlob`), `--limit`, `--all`; `dashboard` takes the same event filters.
 - `dashboard` (`src/report/dashboard.ts`): one self-contained HTML file (inline CSS, no runtime
   deps), a heartbeat sparkline per test from the `Aggregator`'s opt-in `timeline` (off for
@@ -117,6 +124,10 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
   (`detectFramework` → fix table) over signals from `src/github/contents.ts`: one git-trees listing
   finds monorepo `package.json` files (`packageJsonPaths`: shallow, capped at 5, no
   `node_modules`) and Java build files, falling back to root-only probes for huge/empty repos.
+  `retryConfigPaths` adds runner configs and `pom.xml` (at most 6), then workflows (at most 4),
+  and `adviseRetries` suggests retries only where each attempt is recorded (Playwright with the
+  blob reporter, Maven + JUnit) and warns for Cypress, whose Mochawesome reports keep one
+  attempt (0020).
 - Color (`src/colors.ts`): a semantic `Palette` over picocolors; `createPalette(false)` is a no-op,
   so renderers take an injected palette and default to plain. Color is applied _after_ padding;
   `--json` is never colored. Artifact-derived text goes through `terminalSafe` before printing;
@@ -159,6 +170,9 @@ Deeper docs: `docs/Architecture.md`, `docs/Technical-Design.md`, `docs/API-Inter
   repo parse, state, glob matching, partitioning, prune cutoff, extract, fetch orchestration,
   redaction, fingerprint, adapters, event build, dedup, watermark, NDJSON append, manifest-path
   selection, flag parsing.
+- `test/helpers/events.ts` builds `TestEvent`s (`ev`, `failed`, `hour`) and a seeded PRNG
+  (`seeded`). Scoring behaviour is pinned by scenario fixtures in `test/score.test.ts` that run
+  event streams through `aggregate()` → `scoreTest()`; a formula change must keep them passing.
 - Only the raw Octokit calls are left to integration: `listRunsSince`, `getRun`,
   `listRunArtifacts`, `downloadArtifactZip`, `listRepoTree`, `listAttemptStarts`,
   `listRecentCompletedRuns`.

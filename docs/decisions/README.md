@@ -41,3 +41,13 @@ that way: D5 is [0005](0005-test-identity.md), D12 is
 - [0016-rerun-lookback-and-attempt-attribution](0016-rerun-lookback-and-attempt-attribution.md)
   — re-list 48 hours back for re-runs and stamp each artifact's events with the
   attempt that uploaded it.
+- [0017-flip-rate-replaces-rerun-signal](0017-flip-rate-replaces-rerun-signal.md)
+  — score pass/fail flips across push and scheduled runs, drop the workflow
+  re-run signal, and rebalance the weights.
+- [0018-confidence-shrinkage](0018-confidence-shrinkage.md) — discount small
+  samples by `n / (n + 5)` instead of relying on the hard `--min-runs` cutoff.
+- [0019-age-weighted-scoring](0019-age-weighted-scoring.md) — weight runs by
+  age with a 14-day half-life measured from the newest run.
+- [0020-retry-advice-only-where-recorded](0020-retry-advice-only-where-recorded.md)
+  — `doctor` suggests retries for Playwright and Maven + JUnit, and warns for
+  Cypress, whose reports keep one attempt.

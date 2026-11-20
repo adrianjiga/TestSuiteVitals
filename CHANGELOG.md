@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-11-20
+
+### Added
+
+- Flip-rate flake signal: how often a test switches between pass and fail across consecutive
+  push and scheduled runs, per branch and matrix cell. A test failing at random with no retries,
+  on a new commit every run, now scores as flaky instead of near 0 (0017)
+- `report --json` prints `raw_score` and `confidence` next to `score`
+- `--half-life` for `report` and `dashboard`: runs count less the older they are, measured from
+  the newest run, so a test flaky months ago that has passed since fades out. Defaults to `14d`;
+  `off` weighs every run equally (0019)
+- A `WHY` column in `report` and the dashboard naming the signal worth the most points, such as
+  `flips 9/40` or `3 retry-passes`; `--json` adds it as `top_signal` and `reason`
+- `doctor` reads runner configs and workflows and suggests turning on retries for Playwright
+  with the blob reporter and Maven with JUnit, where each attempt is recorded; for Cypress with retries on it warns that a
+  failure a retry rescued is stored as a pass (0020)
+
+### Changed
+
+- Flake score weights are now pass-after-retry 0.35, flip rate 0.30, same-commit intermittence
+  0.20 and failure-mode diversity 0.15, so scores differ from 0.1.x for the same data
+- Flake scores are discounted for small samples by `n / (n + 5)`, so 1 bad run out of 5 ranks
+  below 20 out of 100; `--min-runs` only decides which tests are listed (0018)
+
+### Removed
+
+- The workflow re-run signal, which raised the score of every healthy test caught in a "re-run
+  all jobs"; `--json` no longer has `signals.rerunRate` and gains `signals.flipRate`
+
 ## [0.1.1] - 2026-11-17
 
 ### Security
@@ -55,5 +84,6 @@ Initial public release. Requires Node.js 24 or newer.
 - Token resolution from `--token`, `GITHUB_TOKEN` or `gh auth token`
 - Colored terminal output that honours `NO_COLOR` and stays plain when piped
 
+[0.2.0]: https://github.com/adrianjiga/TestSuiteVitals/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/adrianjiga/TestSuiteVitals/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/adrianjiga/TestSuiteVitals/releases/tag/v0.1.0

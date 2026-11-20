@@ -1,6 +1,6 @@
 # 0003 — Aggregate in-process by streaming
 
-**Status**: Accepted
+**Status**: Accepted. 0017 refines the memory bound below.
 
 ## Context
 

@@ -126,38 +126,49 @@ row per test `id`, or per `(id, matrix)` with `byMatrix`.
 | `skipped`          | `number`                 |                                                                                                              |
 | `flakyRuns`        | `number`                 | Events with `flaky: true` (passed after a failed retry)                                                      |
 | `retriedRuns`      | `number`                 | Events with more than one attempt                                                                            |
-| `rerunRuns`        | `number`                 | Events with `run.run_attempt > 1` (a workflow re-run)                                                        |
-| `distinctShas`     | `number`                 | Distinct `(sha, matrix cell)` buckets                                                                        |
+| `flips`            | `number`                 | Pass↔fail transitions between consecutive push/schedule runs of one `(branch, matrix cell)`                  |
+| `flipPairs`        | `number`                 | Consecutive push/schedule run pairs `flips` was counted over                                                 |
+| `distinctShas`     | `number`                 | Distinct `(sha, matrix cell)` buckets with a pass or a fail                                                  |
 | `intermittentShas` | `number`                 | Buckets that saw both a pass and a fail                                                                      |
 | `fingerprints`     | `number`                 | Distinct error fingerprints across all attempts                                                              |
 | `firstSeen`        | `string`                 | Earliest `run.started_at`                                                                                    |
 | `lastSeen`         | `string`                 | Latest `run.started_at`                                                                                      |
 | `timeline`         | `RunOutcome[]`           | Only with `timeline: true` (the dashboard). `passed`, `flaky`, `failed` or `skipped` per event, oldest first |
+| `weighted`         | `WeightedSignals`        | The counts scoring reads, weighted by run age with `halfLifeMs` (0019)                                       |
 
 Intermittence is always keyed on `(sha, matrix cell)`, even when rows are
 collapsed, so a test that passes on Chrome and fails on Firefox at the same
-commit does not count as intermittent.
+commit does not count as intermittent. Flips are counted the same way, per
+`(branch, matrix cell)` sequence ordered by `started_at` then `run_attempt`
+(0017).
 
 ### FlakeScore
 
 `scoreTest(aggregate, { minRuns })` in `src/report/score.ts`.
 
-| Field          | Type           | Notes                                              |
-| -------------- | -------------- | -------------------------------------------------- |
-| `score`        | `number`       | 0–100, rounded                                     |
-| `eligible`     | `boolean`      | `eligibleRuns >= minRuns` (default `minRuns` is 5) |
-| `eligibleRuns` | `number`       | `passed + failed`; skips do not count              |
-| `signals`      | `FlakeSignals` | The four normalized inputs, each 0–1               |
+| Field          | Type                  | Notes                                              |
+| -------------- | --------------------- | -------------------------------------------------- |
+| `score`        | `number`              | 0–100, rounded: `rawScore` × `confidence`          |
+| `rawScore`     | `number`              | 0–100, rounded: the signal blend before discount   |
+| `confidence`   | `number`              | `eligibleRuns / (eligibleRuns + 5)` (0018)         |
+| `eligible`     | `boolean`             | `eligibleRuns >= minRuns` (default `minRuns` is 5) |
+| `eligibleRuns` | `number`              | `passed + failed`; skips do not count              |
+| `signals`      | `FlakeSignals`        | The four normalized inputs, each 0–1               |
+| `topSignal`    | `keyof FlakeSignals?` | The signal worth the most points; unset at 0       |
 
 | Signal              | Weight | Definition                                                                    |
 | ------------------- | ------ | ----------------------------------------------------------------------------- |
-| `retryFlakeRate`    | 0.45   | `flakyRuns / eligibleRuns`                                                    |
-| `intermittenceRate` | 0.30   | `intermittentShas / distinctShas`                                             |
+| `retryFlakeRate`    | 0.35   | `flakyRuns / eligibleRuns`                                                    |
+| `flipRate`          | 0.30   | `3 × flips / flipPairs`, capped at `1`                                        |
+| `intermittenceRate` | 0.20   | `intermittentShas / distinctShas`                                             |
 | `diversity`         | 0.15   | `0` for zero or one fingerprint, then `(fingerprints − 1) / 3`, capped at `1` |
-| `rerunRate`         | 0.10   | `rerunRuns / eligibleRuns`                                                    |
 
-`score = round(100 × Σ weight × signal)`. A test that always passes, or always
-fails the same way, scores close to 0: it is broken, not flaky.
+`rawScore = round(100 × Σ weight × signal)` and
+`score = round(100 × Σ weight × signal × confidence)`. Every signal is
+computed from `aggregate.weighted`; `eligibleRuns` and `confidence` use the
+plain count. A test that always
+passes, or always fails the same way, scores close to 0: it is broken, not
+flaky.
 
 `rankTests(aggregates, { minRuns })` (`src/report/rank.ts`) returns
 `{ eligible, belowThreshold }`, each a list of `{ aggregate, score }` sorted by
@@ -245,18 +256,19 @@ Notable behavior:
 Rank one repo's tests by flake score, from stored events. Makes no network
 calls.
 
-| Flag                  | Default | Meaning                                                                                      |
-| --------------------- | ------- | -------------------------------------------------------------------------------------------- |
-| `--repo <owner/name>` |         | Required. Exactly one                                                                        |
-| `--data-dir <path>`   | `data`  | Directory holding the partitions                                                             |
-| `--by-matrix`         | `false` | One row per test per matrix cell instead of one per test                                     |
-| `--min-runs <n>`      | `5`     | Passed-or-failed runs a test needs to be ranked. Positive integer                            |
-| `--since <span\|ISO>` |         | Only runs started within the span (`30d`, `12h`) or at or after the timestamp (`2026-10-01`) |
-| `--branch <name>`     |         | Only runs on this branch, exact match                                                        |
-| `--workflow <glob>`   |         | Only runs whose workflow name matches. `*` wildcard, case-insensitive                        |
-| `--limit <n>`         | `20`    | Ranked rows shown in the table. Positive integer                                             |
-| `--all`               | `false` | Also list tests below `--min-runs` instead of a one-line count                               |
-| `--json`              | `false` | Print every scored test as JSON instead of the table                                         |
+| Flag                  | Default | Meaning                                                                                                 |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `--repo <owner/name>` |         | Required. Exactly one                                                                                   |
+| `--data-dir <path>`   | `data`  | Directory holding the partitions                                                                        |
+| `--by-matrix`         | `false` | One row per test per matrix cell instead of one per test                                                |
+| `--min-runs <n>`      | `5`     | Passed-or-failed runs a test needs to be ranked. Positive integer                                       |
+| `--since <span\|ISO>` |         | Only runs started within the span (`30d`, `12h`) or at or after the timestamp (`2026-10-01`)            |
+| `--half-life <span>`  | `14d`   | A run this much older than the newest run weighs half in the score (`7d`, `12h`); `off` disables (0019) |
+| `--branch <name>`     |         | Only runs on this branch, exact match                                                                   |
+| `--workflow <glob>`   |         | Only runs whose workflow name matches. `*` wildcard, case-insensitive                                   |
+| `--limit <n>`         | `20`    | Ranked rows shown in the table. Positive integer                                                        |
+| `--all`               | `false` | Also list tests below `--min-runs` instead of a one-line count                                          |
+| `--json`              | `false` | Print every scored test as JSON instead of the table                                                    |
 
 `--limit` and `--all` affect the table only; `--json` always prints every test,
 eligible ones first. If the filters exclude every stored event, it prints
@@ -275,6 +287,7 @@ Write one repo's ranking as a self-contained HTML file. Makes no network calls.
 | `--by-matrix`         | `false`                | As for `report`                                |
 | `--min-runs <n>`      | `5`                    | As for `report`                                |
 | `--since <span\|ISO>` |                        | As for `report`                                |
+| `--half-life <span>`  | `14d`                  | As for `report`                                |
 | `--branch <name>`     |                        | As for `report`                                |
 | `--workflow <glob>`   |                        | As for `report`                                |
 
@@ -331,7 +344,10 @@ the repo's `package.json` files (up to five, `node_modules` excluded) or a Java
 build file (`pom.xml`, `build.gradle`, `build.gradle.kts`). When no artifact
 matches, it prints the reporter setup and `actions/upload-artifact` YAML for
 that framework: Playwright, Cypress, Vitest, Jest, Mocha, Java, or generic
-JUnit XML. It writes nothing.
+JUnit XML. Either way it reads up to 6 runner configs and `pom.xml` files and
+up to 4 workflows and, where each retry is recorded, suggests turning retries
+on (Playwright with the blob reporter, Maven with JUnit) or warns that they hide rescued failures
+(Cypress) (0020). It writes nothing.
 
 ### Environment variables
 

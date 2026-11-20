@@ -462,14 +462,33 @@ without unwinding, leaving the lock to the stale-pid check.
 ### Aggregation
 
 `Aggregator.add(event)` in `src/report/aggregate.ts` folds one event at a time,
-so memory is one entry per test, not per event. Groups are keyed by `id`, or by
-`id` plus `stableMatrix(matrix)` with `--by-matrix`. Intermittence buckets are
-always keyed by `(sha, matrix cell)`, even when cells are collapsed, so a test
-that passes on Chrome and fails on Firefox at the same commit is not counted as
-intermittent. `fingerprints` counts distinct error fingerprints across every
-attempt, not just the final one. With `timeline: true` (dashboard only), each
-event also records `(started_at, outcome)` where a flaky pass is its own
-outcome; the list is sorted by time at the end.
+so the event history is never held in memory: one entry per test, plus a bucket
+per commit and a small flip entry per push/schedule run. Groups are keyed by
+`id`, or by `id` plus `stableMatrix(matrix)` with `--by-matrix`. Intermittence
+buckets are always keyed by `(sha, matrix cell)`, even when cells are
+collapsed, so a test that passes on Chrome and fails on Firefox at the same
+commit is not counted as intermittent. `fingerprints` counts distinct error
+fingerprints across every attempt, not just the final one. Every passed or
+failed `push` and `schedule` event also adds
+`(started_at, run_attempt, failed)` to a sequence per `(branch, matrix cell)`;
+at the end each sequence is sorted and its pass↔fail transitions become `flips` over `flipPairs`
+consecutive pairs (0017). Pull request runs are left out, since the code
+changes between them. With `timeline: true` (dashboard only), each event also
+records `(started_at, outcome)` where a flaky pass is its own outcome; the list
+is sorted by time at the end.
+
+With `halfLifeMs` (0019), every run weighs `2^(−age / halfLifeMs)`, its age
+measured from the newest run aggregated. That run is unknown until the end, so
+the running passed, failed and flaky weights of each group are kept relative to
+the newest run seen so far, and rescaled by `2^(−Δ / halfLifeMs)` when a newer
+run moves that reference (`rebase`). Commit buckets, fingerprints and flip
+entries record their latest start and are weighted at the end: a bucket by its
+latest passed or failed run (a skip does not make a commit recent), a
+fingerprint by its latest run, a flip pair by its later run. Flip sequences are
+ordered by the parsed start, not the timestamp text. A run whose start does not
+parse counts as infinitely old: weight 0 with a half-life, 1 without, whatever
+the read order. The results land in `weighted`; without a half-life every
+weight is 1.
 
 ### Score
 
@@ -477,21 +496,33 @@ outcome; the list is sorted by time at the end.
 _inconsistent_: a test that always passes, or always fails the same way, fires
 none of the signals and scores 0.
 
+Every count below except `eligibleRuns` is read from `aggregate.weighted`:
+
 ```text
-eligibleRuns      = passed + failed                     (skips excluded)
-retryFlakeRate    = flakyRuns        / eligibleRuns
+eligibleRuns      = passed + failed                     (plain counts, skips excluded)
+retryFlakeRate    = flakyRuns        / (passed + failed)
 intermittenceRate = intermittentShas / distinctShas
-rerunRate         = rerunRuns        / eligibleRuns
+flipRate          = min(1, 3 × flips / flipPairs)
 diversity         = min(fingerprints - 1, 3) / 3        (0 for 0 or 1 fingerprint)
 
-score = round(100 × (0.45·retryFlakeRate + 0.30·intermittenceRate
-                     + 0.10·rerunRate     + 0.15·diversity))
+raw        = 0.35·retryFlakeRate + 0.30·flipRate
+           + 0.20·intermittenceRate + 0.15·diversity
+confidence = eligibleRuns / (eligibleRuns + 5)
+
+rawScore = round(100 × raw)
+score    = round(100 × raw × confidence)
 ```
 
 Every ratio is 0 when its denominator is 0. Diversity counts only failure modes
-beyond the first and saturates at 4 distinct fingerprints. `eligible` is
-`eligibleRuns >= minRuns` (default 5); a test below the threshold still gets a
-score but is set aside, because 1 flaky run out of 2 is not evidence.
+beyond the first and saturates at 4 distinct fingerprints. Random failure at
+rate p flips 2p(1−p) of the time, so the ×3 scale saturates flip rate from
+about 20% random failure, and a test that broke once and was fixed stays near 0. Confidence
+shrinks small samples toward 0 (0018): a test keeps half its raw score at 5
+runs and 89% at 40, so 1 bad run out of 5 ranks below 20 out of 100. Its prior
+strength is fixed, not tied to `minRuns`. The `eligible` flag and the
+displayed `eligibleRuns` use the plain count. `eligible` is
+`eligibleRuns >= minRuns` (default 5), a display filter: a test below it still
+gets a score but is set aside.
 
 ### Ranking
 
@@ -500,7 +531,8 @@ sorts each list by score descending, then by `eligibleRuns` descending (more
 evidence first), then by `id` for a stable order.
 
 `parseSince` accepts `Nd`, `Nh` or an ISO date/timestamp and throws on anything
-else, so a typo never silently widens the window.
+else, so a typo never silently widens the window. `parseHalfLife` accepts a
+positive `Nd` or `Nh`, or `off`, defaulting to `14d`.
 
 ## Report and dashboard rendering
 
@@ -511,7 +543,10 @@ prints a header, the top `--limit` (default 20) eligible tests, and either the
 below-threshold tests (`--all`) or a one-line count of them. Columns are score,
 test label (`file › describe › test`, plus `[k=v,…]` with `--by-matrix`,
 truncated to 46 characters with `…`), eligible runs, retry %, intermittent /
-distinct commits, and failure modes.
+distinct commits, failure modes, and `WHY`. `scoreTest` records the signal
+worth the most points (weight × signal) as `topSignal`, and `explainScore`
+(`src/report/explain.ts`) phrases it from the plain counts, such as
+`flips 6/39`; `WHY` is left off a row whose score has no contributor.
 
 Each column is padded to its visible width _before_ color is applied, so ANSI
 codes never break alignment. The palette (`src/colors.ts`) is semantic: scores
@@ -530,9 +565,9 @@ document with inline CSS and no scripts or external requests. Each row shows
 the score, the test name (the last title segment leads; file and suites follow
 dimmed; the full label is the tooltip), a sparkline of the latest 24 outcomes
 (bar height and color per passed / flaky / failed / skipped), the three signal
-columns, and a status: `flaky` (≥ 50), `unstable` (≥ 20), `watch` (> 0),
-`healthy` (0), or `low data` when below `--min-runs`. Every artifact-derived
-string goes through `esc`, which escapes `& < > " '`.
+columns, the `explainScore` text, and a status: `flaky` (≥ 50), `unstable` (≥
+20), `watch` (> 0), `healthy` (0), or `low data` when below `--min-runs`. Every
+artifact-derived string goes through `esc`, which escapes `& < > " '`.
 
 ### Terminal safety
 
@@ -602,7 +637,21 @@ them to the pure `diagnose` in `src/doctor/diagnose.ts`:
 
 If any artifact name matches the report patterns, `doctor` reports success.
 Otherwise it prints the reporter setup steps and `upload-artifact` YAML for the
-detected framework. The transport's quiet logger drops Octokit's automatic
+detected framework.
+
+Either way it then prints retry advice from `adviseRetries` (0020). From the
+same tree, `retryConfigPaths` picks `playwright.config.*`, `cypress.config.*`,
+and `pom.xml` (at most 6), then `.github/workflows/*.y(a)ml` (at most 4, capped
+apart so workflows never crowd out a config), shallowest first, never
+`node_modules`. The checks are text matches: Playwright gets advice only when a
+config names the `blob` reporter or a workflow passes `--reporter=blob`, since
+JUnit and HTML reports keep only the final attempt; there a `retries:` whose
+value is not `0`, or `--retries=N` in a workflow, counts as on;
+`rerunFailingTestsCount` anywhere in a `pom.xml` or workflow counts as on, and a
+`pom.xml` mentioning TestNG gets no advice; a Cypress `retries:` or `runMode:`
+with any value other than a literal `0` (an expression such as
+`process.env.CI ? 2 : 0` included) triggers the warning. Without a tree listing no config is
+read and no advice is given. The transport's quiet logger drops Octokit's automatic
 `… - 404 with id …` line, so expected 404s from these probes do not clutter
 the output.
 

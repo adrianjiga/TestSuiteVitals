@@ -41,22 +41,26 @@ Each test gets a score from 0 to 100. Flaky means _inconsistent_, so a test that
 or always fails the same way (broken, not flaky), scores near zero. The score blends four
 signals:
 
-| Signal                                                  | Weight |
-| ------------------------------------------------------- | ------ |
-| Passed only after a retry                               | 0.45   |
-| Both passed and failed on the same commit               | 0.30   |
-| Failed in more than one way (distinct stack signatures) | 0.15   |
-| The workflow run was re-run                             | 0.10   |
+| Signal                                                       | Weight |
+| ------------------------------------------------------------ | ------ |
+| Passed only after a retry                                    | 0.35   |
+| Flipped between pass and fail across push and scheduled runs | 0.30   |
+| Both passed and failed on the same commit                    | 0.20   |
+| Failed in more than one way (distinct stack signatures)      | 0.15   |
 
-Skipped runs do not count. A test with fewer than 5 runs that
-passed or failed (`--min-runs`) is scored but set aside, since the sample is too small to trust. The
-report shows the signals next to the score, so every ranking can be explained.
+Skipped runs do not count. Recent runs count more: a run 14 days older than the newest one weighs
+half as much (`--half-life`, or `off` to weigh all runs equally), so a test that was flaky months
+ago and has passed since fades out. The blend is then discounted for small samples: a test keeps
+`n / (n + 5)` of it, where `n` is its passed-or-failed runs, so 1 bad run in 5 ranks below 20 in
+100. A test with fewer than 5 such runs (`--min-runs`) is scored but set aside. The report
+shows the signals next to the score, and a `WHY` column names the one worth the most points (for
+example `flips 9/40` or `3 retry-passes`), so every ranking can be explained.
 
 ```text
 Flaky tests · owner/repo · 3 tests
 
- SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
-    50  webTables.spec.js › should delete a record          8    100%       0/8      2
+ SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES  WHY
+    25  webTables.spec.js › should delete a record          8    100%       0/8      2  8 retry-passes
      0  login.spec.js › remembers the session               8      0%       0/8      0
 
 1 test(s) below the min-runs threshold hidden (--all to show).
@@ -64,14 +68,14 @@ Flaky tests · owner/repo · 3 tests
 
 ## Commands
 
-| Command                 | What it does                                                                                                |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `suitevitals collect`   | Download and parse test reports into `./data` (last 72 hours on the first run, then from where it left off) |
-| `suitevitals report`    | Rank a repo's tests by flake score (`--since`, `--branch`, `--workflow`, `--by-matrix`, `--json`)           |
-| `suitevitals dashboard` | Write the same ranking as a self-contained HTML file with a sparkline per test                              |
-| `suitevitals doctor`    | Check that a repo uploads parseable reports, and print the reporter and upload YAML if not                  |
-| `suitevitals compact`   | Compress closed months to `.ndjson.zst`; the current month stays uncompressed                               |
-| `suitevitals prune`     | Delete months older than `--keep-months` (`--dry-run` to preview)                                           |
+| Command                 | What it does                                                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `suitevitals collect`   | Download and parse test reports into `./data` (last 72 hours on the first run, then from where it left off)      |
+| `suitevitals report`    | Rank a repo's tests by flake score (`--since`, `--half-life`, `--branch`, `--workflow`, `--by-matrix`, `--json`) |
+| `suitevitals dashboard` | Write the same ranking as a self-contained HTML file with a sparkline per test                                   |
+| `suitevitals doctor`    | Check that a repo uploads parseable reports, and print the reporter and upload YAML if not                       |
+| `suitevitals compact`   | Compress closed months to `.ndjson.zst`; the current month stays uncompressed                                    |
+| `suitevitals prune`     | Delete months older than `--keep-months` (`--dry-run` to preview)                                                |
 
 Run `suitevitals <command> --help` for every flag.
 
@@ -144,7 +148,9 @@ no scope for public ones.
   cell comes from the artifact name, and `--matrix-from-artifact` can split it into named
   dimensions such as browser and viewport.
 - **`doctor`** recognizes Playwright, Cypress, Vitest, Jest, Mocha and Java (Maven or Gradle)
-  projects, including monorepos.
+  projects, including monorepos. For Playwright with the blob reporter and Maven with JUnit it
+  suggests turning on retries when they are off, and for Cypress it warns that retries hide rescued
+  failures.
 - **Output**: a terminal table, JSON, and a self-contained HTML dashboard with no runtime
   dependencies.
 

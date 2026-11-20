@@ -3,7 +3,7 @@ import { matchesGlob } from "../collect/filter.js";
 import { colorSupported, createPalette } from "../colors.js";
 import { parseRepoRef, repoSlug } from "../github/repo.js";
 import { Aggregator } from "../report/aggregate.js";
-import { parseSince, rankTests } from "../report/rank.js";
+import { DEFAULT_HALF_LIFE, parseHalfLife, parseSince, rankTests } from "../report/rank.js";
 import { noEventsError, readRepoEvents } from "../report/read.js";
 import { type ReportMeta, renderReport, renderReportJson } from "../report/render.js";
 import { DEFAULT_MIN_RUNS } from "../report/score.js";
@@ -37,6 +37,10 @@ export const reportCommand = defineCommand({
     "min-runs": {
       type: "string",
       description: `Minimum runs for a test to be ranked (default ${DEFAULT_MIN_RUNS})`,
+    },
+    "half-life": {
+      type: "string",
+      description: `Weight runs by age: a run this much older counts half (e.g. 7d, 12h), or off (default ${DEFAULT_HALF_LIFE})`,
     },
     since: {
       type: "string",
@@ -79,9 +83,13 @@ export const reportCommand = defineCommand({
     const minRuns = parsePositiveInt(args["min-runs"], "--min-runs") ?? DEFAULT_MIN_RUNS;
     const limit = parsePositiveInt(args.limit, "--limit") ?? DEFAULT_LIMIT;
     const since = parseSince(args.since);
+    const halfLifeMs = parseHalfLife(args["half-life"]);
     const workflow = parseWorkflowFlag(args.workflow);
 
-    const aggregator = new Aggregator({ byMatrix: args["by-matrix"] });
+    const aggregator = new Aggregator({
+      byMatrix: args["by-matrix"],
+      ...(halfLifeMs ? { halfLifeMs } : {}),
+    });
     let stored = 0;
     for await (const event of readRepoEvents(args["data-dir"], slug)) {
       stored++;

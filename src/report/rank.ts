@@ -51,11 +51,9 @@ export function parseSince(value: string | undefined, now: Date = new Date()): D
     return undefined;
   }
 
-  const relative = /^(\d+)([dh])$/.exec(value.trim());
-  if (relative) {
-    const amount = Number(relative[1]);
-    const unitHours = relative[2] === "d" ? 24 : 1;
-    return new Date(now.getTime() - amount * unitHours * 60 * 60 * 1000);
+  const span = parseSpanMs(value);
+  if (span !== undefined) {
+    return new Date(now.getTime() - span);
   }
 
   const iso = /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}\S*)?$/.test(value.trim());
@@ -66,4 +64,32 @@ export function parseSince(value: string | undefined, now: Date = new Date()): D
     );
   }
   return absolute;
+}
+
+/** Default `--half-life` for age weighting: a run two weeks older counts half as much. */
+export const DEFAULT_HALF_LIFE = "14d";
+
+/**
+ * Parses `--half-life` into milliseconds: a positive span like 14d or 12h, or `off` (returns
+ * undefined) to weight every run equally. Throws on anything else.
+ */
+export function parseHalfLife(value: string = DEFAULT_HALF_LIFE): number | undefined {
+  if (value.trim() === "off") {
+    return undefined;
+  }
+  const span = parseSpanMs(value);
+  if (span === undefined || span <= 0) {
+    throw new Error(`Invalid --half-life "${value}": expected a span like 14d or 12h, or off.`);
+  }
+  return span;
+}
+
+/** `Nd` or `Nh` in milliseconds, or undefined when the value is not such a span. */
+function parseSpanMs(value: string): number | undefined {
+  const match = /^(\d+)([dh])$/.exec(value.trim());
+  if (!match) {
+    return undefined;
+  }
+  const unitHours = match[2] === "d" ? 24 : 1;
+  return Number(match[1]) * unitHours * 60 * 60 * 1000;
 }

@@ -7,6 +7,7 @@ import {
   JAVA_BUILD_FILES,
   packageJsonPaths,
   type RepoSignals,
+  retryConfigPaths,
 } from "../doctor/diagnose.js";
 import { listRunArtifacts } from "../github/artifacts.js";
 import { AuthError } from "../github/auth.js";
@@ -73,10 +74,19 @@ async function gatherSignals(client: GitHubClient, ref: RepoRef): Promise<RepoSi
     const manifests = await Promise.all(
       packageJsonPaths(tree).map((path) => getRepoFile(octokit, ref, path)),
     );
+    const configs = await Promise.all(
+      retryConfigPaths(tree).map(async (path) => ({
+        path,
+        content: await getRepoFile(octokit, ref, path),
+      })),
+    );
     return {
       artifactNames: [...artifactNames],
       packageJsons: manifests.filter((content): content is string => content !== null),
       hasJavaBuild: hasJavaBuildFile(tree),
+      configFiles: configs.filter(
+        (file): file is { path: string; content: string } => file.content !== null,
+      ),
     };
   }
 
@@ -101,21 +111,29 @@ function printDiagnosis(slug: string, signals: RepoSignals, result: Diagnosis, p
       ),
     );
     console.log(`  Run \`suitevitals collect --repo ${slug}\` to start collecting.`);
-    return;
+  } else {
+    console.log(p.warn(`\n⚠ ${slug} uploads no parseable test reports.`));
+    const fix = result.fix;
+    if (fix) {
+      console.log(`\n  ${p.heading(fix.summary)}`);
+      for (const step of fix.steps) {
+        console.log(`  ${p.dim(step)}`);
+      }
+      console.log("");
+      for (const line of fix.yaml.split("\n")) {
+        console.log(`    ${p.dim(line)}`);
+      }
+    }
   }
 
-  console.log(p.warn(`\n⚠ ${slug} uploads no parseable test reports.`));
-  const fix = result.fix;
-  if (!fix) {
-    return;
-  }
-  console.log(`\n  ${p.heading(fix.summary)}`);
-  for (const step of fix.steps) {
-    console.log(`  ${p.dim(step)}`);
-  }
-  console.log("");
-  for (const line of fix.yaml.split("\n")) {
-    console.log(`    ${p.dim(line)}`);
+  const retries = result.retries;
+  if (retries) {
+    const summary =
+      retries.kind === "warn" ? p.warn(`⚠ ${retries.summary}`) : p.heading(retries.summary);
+    console.log(`\n  ${summary}`);
+    for (const step of retries.steps) {
+      console.log(`  ${p.dim(step)}`);
+    }
   }
 }
 

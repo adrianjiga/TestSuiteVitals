@@ -12,6 +12,15 @@ const MANIFEST_LIMIT = 5;
 /** Deepest manifest considered, in path segments — `apps/web/package.json` yes, deeper no. */
 const MANIFEST_MAX_DEPTH = 3;
 
+/** How many runner configs and `pom.xml` files to read for retry settings. */
+const RETRY_CONFIG_LIMIT = 6;
+
+/** How many workflow files to read for retry flags. */
+const WORKFLOW_LIMIT = 4;
+
+const RETRY_CONFIG_FILE = /^(?:playwright|cypress)\.config\.[cm]?[jt]s$|^pom\.xml$/;
+const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
+
 /** What doctor observed about a repo, gathered from the GitHub API (pure input here). */
 export interface RepoSignals {
   /** Artifact names seen across the inspected runs. */
@@ -20,6 +29,8 @@ export interface RepoSignals {
   packageJsons?: string[];
   /** A Maven/Gradle build file is present (Java → JUnit-format reports). */
   hasJavaBuild?: boolean;
+  /** Runner configs, `pom.xml` files and workflows, read to check retry settings. */
+  configFiles?: { path: string; content: string }[];
 }
 
 /**
@@ -47,6 +58,111 @@ export function hasJavaBuildFile(paths: string[]): boolean {
   );
 }
 
+/**
+ * The files to read for retry settings: Playwright/Cypress configs and `pom.xml` (at most
+ * {@link RETRY_CONFIG_LIMIT}), then workflow YAML (at most {@link WORKFLOW_LIMIT}). Never
+ * `node_modules`; shallowest first within each group.
+ */
+export function retryConfigPaths(paths: string[]): string[] {
+  const shallow = paths
+    .filter(
+      (path) => !path.includes("node_modules/") && path.split("/").length <= MANIFEST_MAX_DEPTH,
+    )
+    .sort((a, b) => a.split("/").length - b.split("/").length || (a < b ? -1 : 1));
+  const configs = shallow.filter((path) => RETRY_CONFIG_FILE.test(path.split("/").at(-1) ?? ""));
+  const workflows = shallow.filter((path) => WORKFLOW_FILE.test(path));
+  return [...configs.slice(0, RETRY_CONFIG_LIMIT), ...workflows.slice(0, WORKFLOW_LIMIT)];
+}
+
+/**
+ * Retry advice for the detected framework. `suggest`: retries are off and would be recorded.
+ * `warn`: retries are on but only the final attempt is recorded.
+ */
+export interface RetryAdvice {
+  kind: "suggest" | "warn";
+  summary: string;
+  steps: string[];
+}
+
+/**
+ * Suggests retries for Playwright with the blob reporter and Maven Surefire with JUnit, and warns
+ * for Cypress; gives none for other frameworks or unreadable configs (0020). Pure over
+ * {@link RepoSignals}.
+ */
+export function adviseRetries(framework: Framework, signals: RepoSignals): RetryAdvice | undefined {
+  const files = signals.configFiles ?? [];
+  const named = (pattern: RegExp) =>
+    files.filter((file) => pattern.test(file.path.split("/").at(-1) ?? ""));
+  const workflows = files.filter((file) => WORKFLOW_FILE.test(file.path));
+
+  if (framework === "playwright") {
+    const configs = named(/^playwright\.config\./);
+    const usesBlob =
+      configs.some((file) => /['"`]blob['"`]/.test(file.content)) ||
+      workflows.some((file) => /--reporter[= ]+blob\b/.test(file.content));
+    if (!usesBlob) {
+      return undefined;
+    }
+    const inConfig = configs.some((file) => setsNonZero(file.content, "retries"));
+    const inWorkflow = workflows.some((file) => /--retries[= ]+[1-9]/.test(file.content));
+    if (inConfig || inWorkflow) {
+      return undefined;
+    }
+    return {
+      kind: "suggest",
+      summary: "Turn on Playwright retries: a pass after a retry is the strongest flake signal.",
+      steps: ["In playwright.config.ts:", "  retries: process.env.CI ? 2 : 0,"],
+    };
+  }
+
+  if (framework === "java") {
+    const poms = named(/^pom\.xml$/);
+    if (poms.length === 0 || poms.some((file) => /testng/i.test(file.content))) {
+      return undefined;
+    }
+    if ([...poms, ...workflows].some((file) => file.content.includes("rerunFailingTestsCount"))) {
+      return undefined;
+    }
+    return {
+      kind: "suggest",
+      summary: "Turn on Surefire reruns: a pass after a rerun is the strongest flake signal.",
+      steps: [
+        "In the maven-surefire-plugin <configuration> of pom.xml:",
+        "  <rerunFailingTestsCount>2</rerunFailingTestsCount>",
+        "or run: mvn test -Dsurefire.rerunFailingTestsCount=2",
+      ],
+    };
+  }
+
+  if (framework === "cypress") {
+    const retriesOn = named(/^cypress\.config\./).some(
+      (file) => setsNonZero(file.content, "retries") || setsNonZero(file.content, "runMode"),
+    );
+    if (!retriesOn) {
+      return undefined;
+    }
+    return {
+      kind: "warn",
+      summary:
+        "Cypress retries are on, but suitevitals reads only the final attempt from Mochawesome.",
+      steps: [
+        "A failure that a retry rescued is stored as a plain pass, so the flake score",
+        "never sees it; flip rate across runs still catches tests that fail often.",
+      ],
+    };
+  }
+
+  return undefined;
+}
+
+/** True when `key: <value>` appears with a value other than a literal `0` or a nested object. */
+function setsNonZero(content: string, key: "retries" | "runMode"): boolean {
+  return [...content.matchAll(new RegExp(`\\b${key}\\s*:\\s*([^,\\n}]+)`, "g"))].some((match) => {
+    const value = match[1]?.trim() ?? "0";
+    return value !== "0" && !value.startsWith("{");
+  });
+}
+
 /** A concrete, copy-pasteable fix for a framework that uploads no parseable reports. */
 export interface FrameworkFix {
   /** One-line description of the reporter to enable. */
@@ -65,6 +181,8 @@ export interface Diagnosis {
   matchedArtifacts: string[];
   /** The fix to apply when no reports are uploaded; absent when {@link uploadsReports}. */
   fix?: FrameworkFix;
+  /** Retry advice, independent of whether reports are uploaded. */
+  retries?: RetryAdvice;
 }
 
 /**
@@ -106,11 +224,15 @@ export function diagnose(signals: RepoSignals): Diagnosis {
   const matchedArtifacts = signals.artifactNames.filter(matchesReportArtifact);
   const framework = detectFramework(signals);
   const uploadsReports = matchedArtifacts.length > 0;
+  const retries = adviseRetries(framework, signals);
 
-  if (uploadsReports) {
-    return { framework, uploadsReports, matchedArtifacts };
-  }
-  return { framework, uploadsReports, matchedArtifacts, fix: FIXES[framework] };
+  return {
+    framework,
+    uploadsReports,
+    matchedArtifacts,
+    ...(uploadsReports ? {} : { fix: FIXES[framework] }),
+    ...(retries ? { retries } : {}),
+  };
 }
 
 /**

@@ -1,4 +1,5 @@
 import { type Palette, plainPalette, terminalSafe } from "../colors.js";
+import { explainScore } from "./explain.js";
 import type { RankedTests, ScoredTest } from "./rank.js";
 
 export interface ReportMeta {
@@ -18,7 +19,7 @@ export interface RenderOptions {
 
 const TEST_COL = 46;
 const COLUMNS =
-  " SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES";
+  " SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES  WHY";
 
 /** Renders the ranked report as a terminal table. Color is applied only when `palette` enables it. */
 export function renderReport(
@@ -62,10 +63,7 @@ function row(test: ScoredTest, palette: Palette): string {
   const name = truncate(label(test), TEST_COL).padEnd(TEST_COL);
   const scoreCol = palette.score(String(score.score).padStart(5), score.score);
   const runs = palette.dim(String(score.eligibleRuns).padStart(5));
-  const retry = palette.signal(
-    `${Math.round(score.signals.retryFlakeRate * 100)}%`.padStart(6),
-    score.signals.retryFlakeRate > 0,
-  );
+  const retry = palette.signal(`${retryPercent(test)}%`.padStart(6), aggregate.flakyRuns > 0);
   const intermit = palette.signal(
     `${aggregate.intermittentShas}/${aggregate.distinctShas}`.padStart(8),
     aggregate.intermittentShas > 0,
@@ -74,7 +72,14 @@ function row(test: ScoredTest, palette: Palette): string {
     String(aggregate.fingerprints).padStart(5),
     aggregate.fingerprints > 1,
   );
-  return ` ${scoreCol}  ${name}  ${runs}  ${retry}  ${intermit}  ${modes}`;
+  const line = ` ${scoreCol}  ${name}  ${runs}  ${retry}  ${intermit}  ${modes}`;
+  const why = explainScore(aggregate, score);
+  return why ? `${line}  ${palette.dim(why)}` : line;
+}
+
+/** Plain pass-after-retry share of passed + failed runs, as a whole percentage. */
+export function retryPercent({ aggregate, score }: ScoredTest): number {
+  return score.eligibleRuns > 0 ? Math.round((aggregate.flakyRuns / score.eligibleRuns) * 100) : 0;
 }
 
 /** `file › describe › test [cell]` — the matrix cell is appended only when grouping by matrix. */
@@ -103,9 +108,13 @@ export function renderReportJson(ranked: RankedTests): string {
     framework: test.aggregate.framework,
     ...(test.aggregate.matrix ? { matrix: test.aggregate.matrix } : {}),
     score: test.score.score,
+    raw_score: test.score.rawScore,
+    confidence: test.score.confidence,
     eligible: test.score.eligible,
     eligible_runs: test.score.eligibleRuns,
     signals: test.score.signals,
+    top_signal: test.score.topSignal ?? null,
+    reason: explainScore(test.aggregate, test.score),
     totals: {
       runs: test.aggregate.totalRuns,
       passed: test.aggregate.passed,

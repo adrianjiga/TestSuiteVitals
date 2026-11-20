@@ -172,9 +172,9 @@ Ctrl-C. A lock whose pid is no longer running is removed automatically with
 ```text
 Flaky tests · acme/shop · 4 tests (last 30d)
 
- SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
-    36  tests/checkout.spec.ts › Checkout › applies a…     40     38%      9/31      3
-     6  tests/e2e/webTables.spec.js › Web Tables › sh…     40     10%      2/31      1
+ SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES  WHY
+    38  tests/checkout.spec.ts › Checkout › applies a…     40     38%      9/31      3  flips 6/39
+     4  tests/e2e/webTables.spec.js › Web Tables › sh…     40     10%      2/31      1  4 retry-passes
      0  tests/login.spec.ts › Login › rejects a bad p…     40      0%      0/31      0
 
 1 test(s) below the min-runs threshold hidden (--all to show).
@@ -189,8 +189,12 @@ The heading shows the repo, the number of tests scored, and the active
 | `TEST`     | `file › suite › test`, cut to 46 characters. With `--by-matrix`, the cell is appended as `[key=value,…]` |
 | `RUNS`     | Runs that passed or failed (skips excluded): the evidence behind the score                               |
 | `RETRY%`   | Share of those runs that passed only after a failed retry                                                |
-| `INTERMIT` | Commits (per matrix cell) that both passed and failed / commits seen                                     |
+| `INTERMIT` | Commits (per matrix cell) that both passed and failed / commits with a pass or fail                      |
 | `MODES`    | Distinct failure fingerprints. More than one means the test fails in different ways                      |
+| `WHY`      | The signal worth the most points, with its counts (below). Empty for a score of 0                        |
+
+`WHY` reads `n retry-passes`, `flips f/p` (pass↔fail flips over consecutive
+push/schedule run pairs), `pass+fail on i/n commits` or `n failure modes`.
 
 At most `--limit` (default 20) rows are shown. Tests with fewer than
 `--min-runs` runs are summarized in the last line, or listed under
@@ -212,15 +216,19 @@ score), ignoring `--limit` and `--all`:
     "file": "tests/checkout.spec.ts",
     "title_path": ["Checkout", "applies a discount code"],
     "framework": "playwright",
-    "score": 36,
+    "score": 38,
+    "raw_score": 43,
+    "confidence": 0.8888888888888888,
     "eligible": true,
     "eligible_runs": 40,
     "signals": {
       "retryFlakeRate": 0.375,
+      "flipRate": 0.46153846153846156,
       "intermittenceRate": 0.2903225806451613,
-      "rerunRate": 0.05,
       "diversity": 0.6666666666666666
     },
+    "top_signal": "flipRate",
+    "reason": "flips 6/39",
     "totals": {
       "runs": 40,
       "passed": 37,
@@ -237,6 +245,11 @@ score), ignoring `--limit` and `--all`:
 | Field                     | Meaning                                                                                                        |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `matrix`                  | Present only with `--by-matrix`                                                                                |
+| `score`                   | `raw_score` × `confidence`, rounded; what the table shows and ranks by                                         |
+| `raw_score`               | The signal blend, 0–100, before the small-sample discount                                                      |
+| `top_signal`              | The `signals` key worth the most points, or `null` when none contributes                                       |
+| `reason`                  | The table's `WHY` text; empty when `top_signal` is `null`                                                      |
+| `confidence`              | `eligible_runs / (eligible_runs + 5)` (0018)                                                                   |
 | `eligible`                | `eligible_runs >= --min-runs`                                                                                  |
 | `signals`                 | The four 0–1 inputs to the score; weights are in [API-Interface-Design.md](API-Interface-Design.md#flakescore) |
 | `totals.runs`             | All events for the test in the window, skips included                                                          |
@@ -258,7 +271,7 @@ it can be opened locally, attached to a CI run or published as-is. It is a dark
 - **One row per eligible test**, sorted like `report`: the score; the test name
   first, with file and suites dimmed after it (the full path on hover); a
   sparkline of up to the 24 most recent runs, oldest to newest; then retry %,
-  intermittent/seen commits and failure modes.
+  intermittent/seen commits, failure modes, and why (as the table's `WHY`).
 - **Sparkline bars** by outcome: short green for a pass, taller amber for a
   pass after retry, tallest red for a failure, short grey for a skip.
 - **Status label** by score: `healthy` (0), `watch` (1–19), `unstable`
@@ -351,3 +364,18 @@ The check is by artifact name: an artifact counts when its name contains
 workflow YAML to add for the detected framework (`playwright`, `cypress`,
 `vitest`, `jest`, `mocha` or `java`), or generic JUnit XML advice when the
 framework is `unknown`.
+
+After that, `doctor` may add retry advice (0020). For a Playwright project
+whose config and workflows set no retries:
+
+```text
+  Turn on Playwright retries: a pass after a retry is the strongest flake signal.
+  In playwright.config.ts:
+    retries: process.env.CI ? 2 : 0,
+```
+
+Maven projects using JUnit get the same suggestion for Surefire's
+`rerunFailingTestsCount`. A Cypress project with retries on gets
+`⚠ Cypress retries are on, but suitevitals reads only the final attempt from
+Mochawesome.` instead, since a failure that a retry rescued is stored as a
+pass.

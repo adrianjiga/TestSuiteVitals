@@ -1,38 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { RunContext, TestEvent } from "../src/events/event.js";
 import { aggregate } from "../src/report/aggregate.js";
-
-/** Builds a TestEvent with sensible defaults; `run` is merged shallowly over the default run. */
-function ev(over: Partial<Omit<TestEvent, "run">> & { run?: Partial<RunContext> } = {}): TestEvent {
-  const { run, ...rest } = over;
-  return {
-    schema_version: 1,
-    id: "t1",
-    file: "a.spec.ts",
-    title_path: ["A", "does x"],
-    framework: "junit",
-    source: "artifact",
-    status: "passed",
-    flaky: false,
-    duration_ms: 10,
-    attempts: [{ n: 1, status: "passed", duration_ms: 10 }],
-    matrix: {},
-    collected_at: "2026-06-01T00:00:00Z",
-    ...rest,
-    run: {
-      provider: "github",
-      repo: "o/r",
-      run_id: 1,
-      run_attempt: 1,
-      workflow: "ci.yml",
-      branch: "main",
-      sha: "sha1",
-      trigger: "push",
-      started_at: "2026-06-01T00:00:00Z",
-      ...run,
-    },
-  };
-}
+import { ev, failed, hour } from "./helpers/events.js";
 
 describe("aggregate grouping", () => {
   it("collapses matrix cells into one row by default", () => {
@@ -72,7 +40,7 @@ describe("aggregate grouping", () => {
 });
 
 describe("aggregate signals", () => {
-  it("counts statuses, flaky/retried/rerun runs, and distinct fingerprints", () => {
+  it("counts statuses, flaky/retried runs, and distinct fingerprints", () => {
     const rows = aggregate([
       ev({ status: "passed", run: { run_id: 1, sha: "s1" } }),
       ev({
@@ -92,17 +60,15 @@ describe("aggregate signals", () => {
         ],
         run: { run_id: 4, sha: "s4" },
       }),
-      ev({ status: "passed", run: { run_id: 5, run_attempt: 2, sha: "s5" } }),
     ]);
 
     const [row] = rows;
-    expect(row?.totalRuns).toBe(5);
-    expect(row?.passed).toBe(3);
+    expect(row?.totalRuns).toBe(4);
+    expect(row?.passed).toBe(2);
     expect(row?.failed).toBe(1);
     expect(row?.skipped).toBe(1);
     expect(row?.flakyRuns).toBe(1);
     expect(row?.retriedRuns).toBe(1);
-    expect(row?.rerunRuns).toBe(1);
     expect(row?.fingerprints).toBe(2);
   });
 
@@ -121,6 +87,21 @@ describe("aggregate signals", () => {
     ]);
     expect(crossCell[0]?.distinctShas).toBe(2);
     expect(crossCell[0]?.intermittentShas).toBe(0);
+  });
+
+  it("leaves out commits where the test was only skipped, with or without a half-life", () => {
+    const events = [
+      ev({ run: { run_id: 1, sha: "a", started_at: hour(1) } }),
+      failed({ run: { run_id: 2, sha: "a", started_at: hour(2) } }),
+      ev({ status: "skipped", run: { run_id: 3, sha: "s1", started_at: hour(3) } }),
+      ev({ status: "skipped", run: { run_id: 4, sha: "s2", started_at: hour(4) } }),
+    ];
+    for (const options of [{}, { halfLifeMs: 86_400_000 }]) {
+      const [row] = aggregate(events, options);
+      expect(row?.distinctShas).toBe(1);
+      expect(row?.intermittentShas).toBe(1);
+      expect(row?.weighted.intermittentShas).toBe(row?.weighted.distinctShas);
+    }
   });
 
   it("tracks the earliest and latest run start in the window", () => {
@@ -150,5 +131,172 @@ describe("aggregate signals", () => {
       "passed",
       "flaky",
     ]);
+  });
+});
+
+describe("aggregate flips", () => {
+  it("counts pass/fail transitions in run-start order, whatever the input order", () => {
+    const rows = aggregate([
+      ev({ run: { run_id: 3, sha: "c", started_at: hour(3) } }),
+      failed({ run: { run_id: 2, sha: "b", started_at: hour(2) } }),
+      ev({ run: { run_id: 1, sha: "a", started_at: hour(1) } }),
+      failed({ run: { run_id: 4, sha: "d", started_at: hour(4) } }),
+    ]);
+    // pass → fail → pass → fail: three flips across three consecutive pairs.
+    expect(rows[0]?.flips).toBe(3);
+    expect(rows[0]?.flipPairs).toBe(3);
+  });
+
+  it("ignores skips, which neither flip nor break a streak", () => {
+    const rows = aggregate([
+      ev({ run: { run_id: 1, sha: "a", started_at: hour(1) } }),
+      ev({ status: "skipped", run: { run_id: 2, sha: "b", started_at: hour(2) } }),
+      ev({ run: { run_id: 3, sha: "c", started_at: hour(3) } }),
+    ]);
+    expect(rows[0]?.flips).toBe(0);
+    expect(rows[0]?.flipPairs).toBe(1);
+  });
+
+  it("counts only push and schedule runs, where the code between runs barely changes", () => {
+    const rows = aggregate([
+      ev({ run: { run_id: 1, sha: "a", trigger: "pull_request", started_at: hour(1) } }),
+      failed({ run: { run_id: 2, sha: "b", trigger: "pull_request", started_at: hour(2) } }),
+      ev({ run: { run_id: 3, sha: "c", trigger: "schedule", started_at: hour(3) } }),
+      failed({ run: { run_id: 4, sha: "d", trigger: "push", started_at: hour(4) } }),
+    ]);
+    expect(rows[0]?.flips).toBe(1);
+    expect(rows[0]?.flipPairs).toBe(1);
+  });
+
+  it("keeps a separate sequence per branch and matrix cell", () => {
+    // Interleaved, these alternate pass/fail; per (branch, cell) each sequence is constant.
+    const rows = aggregate([
+      ev({ matrix: { os: "linux" }, run: { run_id: 1, sha: "a", started_at: hour(1) } }),
+      failed({ matrix: { os: "mac" }, run: { run_id: 1, sha: "a", started_at: hour(1) } }),
+      ev({ matrix: { os: "linux" }, run: { run_id: 2, sha: "b", started_at: hour(2) } }),
+      failed({ matrix: { os: "mac" }, run: { run_id: 2, sha: "b", started_at: hour(2) } }),
+      ev({ run: { run_id: 3, branch: "release", sha: "c", started_at: hour(3) } }),
+      failed({ run: { run_id: 4, branch: "main", sha: "d", started_at: hour(4) } }),
+    ]);
+    expect(rows[0]?.flips).toBe(0);
+    expect(rows[0]?.flipPairs).toBe(2);
+  });
+
+  it("orders runs by time, not by how their timestamps are written", () => {
+    const rows = aggregate([
+      ev({ run: { run_id: 1, sha: "a", started_at: "2026-06-01T10:00:00Z" } }),
+      // 11:30 UTC, though it sorts first as text.
+      failed({ run: { run_id: 2, sha: "b", started_at: "2026-06-01T09:30:00-02:00" } }),
+      ev({ run: { run_id: 3, sha: "c", started_at: "2026-06-01T12:00:00.000Z" } }),
+    ]);
+    expect(rows[0]?.flips).toBe(2);
+  });
+
+  it("orders a re-run after its first attempt when both share a start time", () => {
+    const rows = aggregate([
+      ev({ run: { run_id: 1, run_attempt: 2, sha: "a", started_at: hour(1) } }),
+      failed({ run: { run_id: 1, run_attempt: 1, sha: "a", started_at: hour(1) } }),
+      ev({ run: { run_id: 2, sha: "b", started_at: hour(2) } }),
+    ]);
+    expect(rows[0]?.flips).toBe(1);
+    expect(rows[0]?.flipPairs).toBe(2);
+  });
+});
+
+describe("aggregate age weighting", () => {
+  const DAY = 86_400_000;
+  const day = (n: number) => hour(24 * n);
+
+  it("weights every run 1 when no half-life is set", () => {
+    const [row] = aggregate([
+      failed({ run: { run_id: 1, sha: "a", started_at: day(0) } }),
+      ev({ run: { run_id: 2, sha: "b", started_at: day(30) } }),
+    ]);
+    expect(row?.weighted).toEqual({
+      passed: 1,
+      failed: 1,
+      flakyRuns: 0,
+      distinctShas: 2,
+      intermittentShas: 0,
+      flips: 1,
+      flipPairs: 1,
+      fingerprints: 1,
+    });
+  });
+
+  it("halves a run's weight per half-life of age, whatever the input order", () => {
+    const events = [
+      failed({ run: { run_id: 1, sha: "a", started_at: day(0) } }),
+      ev({ run: { run_id: 2, sha: "b", started_at: day(1) } }),
+      ev({ flaky: true, run: { run_id: 3, sha: "c", started_at: day(2) } }),
+    ];
+    for (const order of [events, [...events].reverse()]) {
+      const [row] = aggregate(order, { halfLifeMs: DAY });
+      expect(row?.passed).toBe(2);
+      expect(row?.weighted.passed).toBe(1.5);
+      expect(row?.weighted.failed).toBe(0.25);
+      expect(row?.weighted.flakyRuns).toBe(1);
+    }
+  });
+
+  it("measures age from the newest run of any test, so a test not run lately fades", () => {
+    const rows = aggregate(
+      [
+        ev({ id: "old", run: { run_id: 1, sha: "a", started_at: day(0) } }),
+        ev({ id: "new", run: { run_id: 2, sha: "b", started_at: day(2) } }),
+      ],
+      { halfLifeMs: DAY },
+    );
+    expect(rows.find((r) => r.id === "old")?.weighted.passed).toBe(0.25);
+    expect(rows.find((r) => r.id === "new")?.weighted.passed).toBe(1);
+  });
+
+  it("weighs a run with an unreadable start as oldest, whatever the read order", () => {
+    const undated = failed({ run: { run_id: 9, sha: "x", started_at: "not a date" } });
+    const dated = [
+      ev({ run: { run_id: 1, sha: "a", started_at: day(0) } }),
+      ev({ run: { run_id: 2, sha: "b", started_at: day(1) } }),
+    ];
+    for (const order of [
+      [undated, ...dated],
+      [...dated, undated],
+    ]) {
+      const [row] = aggregate(order, { halfLifeMs: DAY });
+      expect(row?.weighted.failed).toBe(0);
+      expect(row?.weighted.passed).toBe(1.5);
+    }
+    expect(aggregate([undated, ...dated])[0]?.weighted.failed).toBe(1);
+  });
+
+  it("does not let a skipped run refresh a commit's weight", () => {
+    const [row] = aggregate(
+      [
+        ev({ run: { run_id: 1, sha: "a", started_at: day(0) } }),
+        failed({ run: { run_id: 2, sha: "a", started_at: day(0) } }),
+        ev({ status: "skipped", run: { run_id: 3, sha: "a", started_at: day(2) } }),
+      ],
+      { halfLifeMs: DAY },
+    );
+    expect(row?.weighted.distinctShas).toBe(0.25);
+    expect(row?.weighted.intermittentShas).toBe(0.25);
+  });
+
+  it("weights commits, failure modes and flip pairs by their latest run", () => {
+    const [row] = aggregate(
+      [
+        failed({ run: { run_id: 1, sha: "a", started_at: day(0) } }, "fp1"),
+        ev({ run: { run_id: 2, sha: "a", started_at: day(1) } }),
+        failed({ run: { run_id: 3, sha: "b", started_at: day(2) } }, "fp2"),
+      ],
+      { halfLifeMs: DAY },
+    );
+    // Commit a (latest day 1) is intermittent; commit b (day 2) is not.
+    expect(row?.weighted.distinctShas).toBe(1.5);
+    expect(row?.weighted.intermittentShas).toBe(0.5);
+    // fp1 last seen on day 0 (0.25), fp2 on day 2 (1).
+    expect(row?.weighted.fingerprints).toBe(1.25);
+    // fail → pass (day 1, weight 0.5) → fail (day 2, weight 1): both pairs flip.
+    expect(row?.weighted.flipPairs).toBe(1.5);
+    expect(row?.weighted.flips).toBe(1.5);
   });
 });
