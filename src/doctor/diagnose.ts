@@ -12,8 +12,11 @@ const MANIFEST_LIMIT = 5;
 /** Deepest manifest considered, in path segments — `apps/web/package.json` yes, deeper no. */
 const MANIFEST_MAX_DEPTH = 3;
 
-/** How many runner configs, `pom.xml` files and workflows to read for retry settings. */
-const RETRY_CONFIG_LIMIT = 8;
+/** How many runner configs and `pom.xml` files to read for retry settings. */
+const RETRY_CONFIG_LIMIT = 6;
+
+/** How many workflow files to read for retry flags, capped apart so they never crowd out configs. */
+const WORKFLOW_LIMIT = 4;
 
 const RETRY_CONFIG_FILE = /^(?:playwright|cypress)\.config\.[cm]?[jt]s$|^pom\.xml$/;
 const WORKFLOW_FILE = /^\.github\/workflows\/[^/]+\.ya?ml$/;
@@ -56,20 +59,20 @@ export function hasJavaBuildFile(paths: string[]): boolean {
 }
 
 /**
- * The files whose contents reveal retry settings: Playwright/Cypress configs, `pom.xml` and
- * workflow YAML (where `--retries` or `-Dsurefire.rerunFailingTestsCount` often live), never
- * `node_modules`, shallowest first, capped at {@link RETRY_CONFIG_LIMIT}.
+ * The files whose contents reveal retry settings: Playwright/Cypress configs and `pom.xml`
+ * (at most {@link RETRY_CONFIG_LIMIT}), then workflow YAML, where `--retries` or
+ * `-Dsurefire.rerunFailingTestsCount` often live (at most {@link WORKFLOW_LIMIT}). Never
+ * `node_modules`; shallowest first within each group.
  */
 export function retryConfigPaths(paths: string[]): string[] {
-  return paths
+  const shallow = paths
     .filter(
-      (path) =>
-        !path.includes("node_modules/") &&
-        path.split("/").length <= MANIFEST_MAX_DEPTH &&
-        (RETRY_CONFIG_FILE.test(path.split("/").at(-1) ?? "") || WORKFLOW_FILE.test(path)),
+      (path) => !path.includes("node_modules/") && path.split("/").length <= MANIFEST_MAX_DEPTH,
     )
-    .sort((a, b) => a.split("/").length - b.split("/").length || (a < b ? -1 : 1))
-    .slice(0, RETRY_CONFIG_LIMIT);
+    .sort((a, b) => a.split("/").length - b.split("/").length || (a < b ? -1 : 1));
+  const configs = shallow.filter((path) => RETRY_CONFIG_FILE.test(path.split("/").at(-1) ?? ""));
+  const workflows = shallow.filter((path) => WORKFLOW_FILE.test(path));
+  return [...configs.slice(0, RETRY_CONFIG_LIMIT), ...workflows.slice(0, WORKFLOW_LIMIT)];
 }
 
 /**

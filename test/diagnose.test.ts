@@ -108,7 +108,7 @@ describe("diagnose", () => {
 });
 
 describe("retryConfigPaths", () => {
-  it("picks runner configs, pom.xml files and workflows, shallowest first, capped", () => {
+  it("picks runner configs and pom.xml files, then workflows, shallowest first", () => {
     const tree = [
       "apps/e2e/playwright.config.ts",
       "playwright.config.ts",
@@ -126,12 +126,19 @@ describe("retryConfigPaths", () => {
       "playwright.config.ts",
       "pom.xml",
       "module/pom.xml",
+      "apps/e2e/playwright.config.ts",
       ".github/workflows/ci.yml",
       ".github/workflows/nightly.yaml",
-      "apps/e2e/playwright.config.ts",
     ]);
-    const many = Array.from({ length: 20 }, (_, i) => `.github/workflows/w${i}.yml`);
-    expect(retryConfigPaths(many)).toHaveLength(8);
+  });
+
+  it("caps configs and workflows separately, so many workflows never crowd out a config", () => {
+    const workflows = Array.from({ length: 20 }, (_, i) => `.github/workflows/w${i}.yml`);
+    const picked = retryConfigPaths([...workflows, "apps/e2e/playwright.config.ts"]);
+    expect(picked).toContain("apps/e2e/playwright.config.ts");
+    expect(picked.filter((path) => path.startsWith(".github/"))).toHaveLength(4);
+    const poms = Array.from({ length: 20 }, (_, i) => `m${i}/pom.xml`);
+    expect(retryConfigPaths(poms)).toHaveLength(6);
   });
 });
 
