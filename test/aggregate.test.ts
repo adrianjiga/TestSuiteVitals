@@ -236,6 +236,23 @@ describe("aggregate age weighting", () => {
     expect(rows.find((r) => r.id === "new")?.weighted.passed).toBe(1);
   });
 
+  it("weighs a run with an unreadable start as oldest, whatever the read order", () => {
+    const undated = failed({ run: { run_id: 9, sha: "x", started_at: "not a date" } });
+    const dated = [
+      ev({ run: { run_id: 1, sha: "a", started_at: day(0) } }),
+      ev({ run: { run_id: 2, sha: "b", started_at: day(1) } }),
+    ];
+    for (const order of [
+      [undated, ...dated],
+      [...dated, undated],
+    ]) {
+      const [row] = aggregate(order, { halfLifeMs: DAY });
+      expect(row?.weighted.failed).toBe(0);
+      expect(row?.weighted.passed).toBe(1.5);
+    }
+    expect(aggregate([undated, ...dated])[0]?.weighted.failed).toBe(1);
+  });
+
   it("does not let a skipped run refresh a commit's weight", () => {
     const [row] = aggregate(
       [
