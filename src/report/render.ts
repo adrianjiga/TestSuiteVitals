@@ -77,7 +77,7 @@ function row(test: ScoredTest, palette: Palette): string {
   return why ? `${line}  ${palette.dim(why)}` : line;
 }
 
-/** Plain pass-after-retry share of passed + failed runs, matching the other count columns. */
+/** Plain pass-after-retry share of passed + failed runs, as a whole percentage. */
 export function retryPercent({ aggregate, score }: ScoredTest): number {
   return score.eligibleRuns > 0 ? Math.round((aggregate.flakyRuns / score.eligibleRuns) * 100) : 0;
 }

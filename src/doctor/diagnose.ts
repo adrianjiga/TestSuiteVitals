@@ -15,7 +15,7 @@ const MANIFEST_MAX_DEPTH = 3;
 /** How many runner configs and `pom.xml` files to read for retry settings. */
 const RETRY_CONFIG_LIMIT = 6;
 
-/** How many workflow files to read for retry flags, capped apart so they never crowd out configs. */
+/** How many workflow files to read for retry flags. */
 const WORKFLOW_LIMIT = 4;
 
 const RETRY_CONFIG_FILE = /^(?:playwright|cypress)\.config\.[cm]?[jt]s$|^pom\.xml$/;
@@ -59,9 +59,8 @@ export function hasJavaBuildFile(paths: string[]): boolean {
 }
 
 /**
- * The files whose contents reveal retry settings: Playwright/Cypress configs and `pom.xml`
- * (at most {@link RETRY_CONFIG_LIMIT}), then workflow YAML, where `--retries` or
- * `-Dsurefire.rerunFailingTestsCount` often live (at most {@link WORKFLOW_LIMIT}). Never
+ * The files to read for retry settings: Playwright/Cypress configs and `pom.xml` (at most
+ * {@link RETRY_CONFIG_LIMIT}), then workflow YAML (at most {@link WORKFLOW_LIMIT}). Never
  * `node_modules`; shallowest first within each group.
  */
 export function retryConfigPaths(paths: string[]): string[] {
@@ -76,9 +75,8 @@ export function retryConfigPaths(paths: string[]): string[] {
 }
 
 /**
- * Retry advice for the detected framework. `suggest`: retries are off, and turning them on adds
- * pass-after-retry, the strongest flake signal. `warn`: retries are on but the stored report
- * keeps only the final attempt, so failures a retry rescued never reach the flake score.
+ * Retry advice for the detected framework. `suggest`: retries are off and would be recorded.
+ * `warn`: retries are on but only the final attempt is recorded.
  */
 export interface RetryAdvice {
   kind: "suggest" | "warn";
@@ -87,10 +85,9 @@ export interface RetryAdvice {
 }
 
 /**
- * Advises on retries only where the advice is safe: Playwright with the blob reporter (it records
- * every retry), Maven Surefire with JUnit (`rerunFailingTestsCount` writes `flakyFailure`), and a
- * warning for Cypress (the Mochawesome adapter reads one attempt per test). TestNG, Gradle and unreadable configs
- * get none. Pure over {@link RepoSignals}.
+ * Suggests retries for Playwright with the blob reporter and Maven Surefire with JUnit, and warns
+ * for Cypress; gives none for other frameworks or unreadable configs (0020). Pure over
+ * {@link RepoSignals}.
  */
 export function adviseRetries(framework: Framework, signals: RepoSignals): RetryAdvice | undefined {
   const files = signals.configFiles ?? [];
@@ -100,7 +97,6 @@ export function adviseRetries(framework: Framework, signals: RepoSignals): Retry
 
   if (framework === "playwright") {
     const configs = named(/^playwright\.config\./);
-    // Only the blob reporter keeps every retry; with JUnit or HTML a rescued failure is a pass.
     const usesBlob =
       configs.some((file) => /['"`]blob['"`]/.test(file.content)) ||
       workflows.some((file) => /--reporter[= ]+blob\b/.test(file.content));

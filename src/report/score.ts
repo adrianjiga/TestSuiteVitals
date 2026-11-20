@@ -3,19 +3,13 @@ import type { TestAggregate } from "./aggregate.js";
 /** Below this many eligible runs a sample is too small to rank (1-of-2 is not "50% flaky"). */
 export const DEFAULT_MIN_RUNS = 5;
 
-/**
- * Prior strength of the confidence discount: a test needs this many runs to keep half its raw
- * score, so 1 bad run in 5 ranks below 20 in 100.
- */
+/** Prior strength of the confidence discount: a test needs this many runs to keep half its score. */
 const CONFIDENCE_PRIOR_RUNS = 5;
 
 /** Failure-mode diversity saturates here: this many distinct fingerprints scores the signal 1.0. */
 const FINGERPRINT_CAP = 4;
 
-/**
- * Random failure at rate p flips 2p(1−p) of the time: 0.375 at 25%, 0.18 at 10%. Scaling by 3
- * saturates the signal from about 20% random failure, and lets ~13% cross the flaky line alone.
- */
+/** Multiplier on the raw flip rate before it is capped at 1 (0017). */
 const FLIP_SCALE = 3;
 
 /**
@@ -111,8 +105,8 @@ function ratio(numerator: number, denominator: number): number {
 }
 
 /**
- * Only failure modes *beyond the first* are suspicious: one consistent mode scores 0. With age
- * weighting `fingerprints` is fractional, as old modes fade out.
+ * Only failure modes *beyond the first* are suspicious: one consistent mode scores 0.
+ * `fingerprints` is fractional under age weighting.
  */
 function diversity(fingerprints: number): number {
   if (fingerprints <= 1) {
