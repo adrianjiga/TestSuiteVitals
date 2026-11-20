@@ -15,6 +15,8 @@ function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
     flakyRuns: 0,
     retriedRuns: 0,
     rerunRuns: 0,
+    flips: 0,
+    flipPairs: 0,
     distinctShas: 0,
     intermittentShas: 0,
     fingerprints: 0,
