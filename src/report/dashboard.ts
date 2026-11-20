@@ -1,4 +1,5 @@
 import type { RunOutcome } from "./aggregate.js";
+import { explainScore } from "./explain.js";
 import type { RankedTests, ScoredTest } from "./rank.js";
 
 export interface DashboardMeta {
@@ -30,12 +31,14 @@ const HEADER_ROW = `    <div class="row head">
       <span>retry</span>
       <span>intermit</span>
       <span>modes</span>
+      <span>why</span>
       <span class="r-status">status</span>
     </div>`;
 
 const LEGEND =
   "score 0–100 flakiness · retry pass-after-retry rate · intermit commits that both passed and " +
-  "failed · modes distinct failure signatures · recent run outcomes, old → new";
+  "failed · modes distinct failure signatures · why the signal worth most points · recent run " +
+  "outcomes, old → new";
 
 /**
  * Renders a self-contained HTML dashboard (inline CSS, zero runtime dependencies) — the
@@ -100,6 +103,7 @@ function row(test: ScoredTest): string {
       <span class="sig">${retry}%</span>
       <span class="sig">${aggregate.intermittentShas}/${aggregate.distinctShas}</span>
       <span class="sig">${aggregate.fingerprints}</span>
+      <span class="why">${esc(explainScore(aggregate, score))}</span>
       <span class="status">${statusLabel(score.score, score.eligible)}</span>
     </div>`;
 }
@@ -188,7 +192,7 @@ header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bo
 .rows { display: flex; flex-direction: column; }
 .row {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 104px 56px 72px 56px 86px;
+  grid-template-columns: 48px minmax(0, 1fr) 104px 56px 72px 56px 168px 86px;
   align-items: center; gap: 14px;
   padding: 9px 8px; border-bottom: 1px solid var(--border);
 }
@@ -206,6 +210,7 @@ header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bo
 .spark i { display: inline-block; width: 3px; border-radius: 1px; }
 .spark .nodata { width: 100%; height: 1px; background: var(--border); }
 .sig { color: var(--dim); font-variant-numeric: tabular-nums; }
+.why { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status { text-align: right; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
 .sev-high .status { color: var(--bad); }
 .sev-mid .status { color: var(--warn); }

@@ -56,6 +56,12 @@ describe("renderReport", () => {
     expect(out).not.toContain("tiny");
   });
 
+  it("explains each row's score with its top contributor", () => {
+    const out = renderReport(ranked, { slug: "o/r", totalTests: 3 }, { limit: 20, all: false });
+    expect(out).toMatch(/WHY/);
+    expect(out.split("\n").find((line) => line.includes("flaky"))).toMatch(/10 retry-passes$/);
+  });
+
   it("reveals below-threshold tests with --all", () => {
     const out = renderReport(ranked, { slug: "o/r", totalTests: 3 }, { limit: 20, all: true });
     expect(out).toContain("Below the min-runs threshold (1):");
@@ -89,6 +95,8 @@ describe("renderReportJson", () => {
     // 10 runs give confidence 10/15, so the raw 35 is shown as 23.
     expect(rows[0]).toMatchObject({ id: "flaky", score: 23, raw_score: 35, eligible: true });
     expect(rows[0]).toHaveProperty("confidence", 10 / 15);
+    expect(rows[0]).toMatchObject({ top_signal: "retryFlakeRate", reason: "10 retry-passes" });
+    expect(rows[1]).toMatchObject({ top_signal: null, reason: "" });
     expect(rows.at(-1)).toMatchObject({ id: "tiny", eligible: false });
   });
 });

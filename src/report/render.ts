@@ -1,4 +1,5 @@
 import { type Palette, plainPalette, terminalSafe } from "../colors.js";
+import { explainScore } from "./explain.js";
 import type { RankedTests, ScoredTest } from "./rank.js";
 
 export interface ReportMeta {
@@ -18,7 +19,7 @@ export interface RenderOptions {
 
 const TEST_COL = 46;
 const COLUMNS =
-  " SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES";
+  " SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES  WHY";
 
 /** Renders the ranked report as a terminal table. Color is applied only when `palette` enables it. */
 export function renderReport(
@@ -74,7 +75,9 @@ function row(test: ScoredTest, palette: Palette): string {
     String(aggregate.fingerprints).padStart(5),
     aggregate.fingerprints > 1,
   );
-  return ` ${scoreCol}  ${name}  ${runs}  ${retry}  ${intermit}  ${modes}`;
+  const line = ` ${scoreCol}  ${name}  ${runs}  ${retry}  ${intermit}  ${modes}`;
+  const why = explainScore(aggregate, score);
+  return why ? `${line}  ${palette.dim(why)}` : line;
 }
 
 /** `file › describe › test [cell]` — the matrix cell is appended only when grouping by matrix. */
@@ -108,6 +111,8 @@ export function renderReportJson(ranked: RankedTests): string {
     eligible: test.score.eligible,
     eligible_runs: test.score.eligibleRuns,
     signals: test.score.signals,
+    top_signal: test.score.topSignal ?? null,
+    reason: explainScore(test.aggregate, test.score),
     totals: {
       runs: test.aggregate.totalRuns,
       passed: test.aggregate.passed,

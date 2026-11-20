@@ -44,6 +44,7 @@ describe("renderDashboard", () => {
     expect(html).toContain("owner/repo");
     expect(html).toContain("sev-mid"); // raw 35 × confidence 10/15 → 23, unstable tint
     expect(html).toContain("background:var(--bad)"); // the failed sparkline bar
+    expect(html).toContain('<span class="why">10 retry-passes</span>');
   });
 
   it("escapes HTML in test identifiers", () => {
