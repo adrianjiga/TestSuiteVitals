@@ -223,13 +223,18 @@ describe("adviseRetries", () => {
   });
 
   it("warns that Cypress retries hide failures from the flake score", () => {
-    for (const config of ["retries: 2,", "retries: { runMode: 2, openMode: 0 },"]) {
+    for (const config of [
+      "retries: 2,",
+      "retries: { runMode: 2, openMode: 0 },",
+      "retries: process.env.CI ? 2 : 0,",
+      "retries: { runMode: Number(process.env.RETRIES), openMode: 0 },",
+    ]) {
       const advice = adviseRetries("cypress", signals({ "cypress.config.js": config }));
       expect(advice?.kind).toBe("warn");
     }
-    expect(
-      adviseRetries("cypress", signals({ "cypress.config.js": "retries: { runMode: 0 }," })),
-    ).toBeUndefined();
+    for (const config of ["retries: 0,", "retries: { runMode: 0, openMode: 2 },"]) {
+      expect(adviseRetries("cypress", signals({ "cypress.config.js": config }))).toBeUndefined();
+    }
   });
 
   it("gives no advice without readable config files or for other frameworks", () => {

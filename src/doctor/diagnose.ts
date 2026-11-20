@@ -104,11 +104,7 @@ export function adviseRetries(framework: Framework, signals: RepoSignals): Retry
     if (!configs.some((file) => /['"`]blob['"`]/.test(file.content))) {
       return undefined;
     }
-    const inConfig = configs.some((file) =>
-      [...file.content.matchAll(/\bretries\s*:\s*([^,\n}]+)/g)].some(
-        (match) => match[1]?.trim() !== "0",
-      ),
-    );
+    const inConfig = configs.some((file) => setsNonZero(file.content, "retries"));
     const inWorkflow = workflows.some((file) => /--retries[= ]+[1-9]/.test(file.content));
     if (inConfig || inWorkflow) {
       return undefined;
@@ -140,8 +136,8 @@ export function adviseRetries(framework: Framework, signals: RepoSignals): Retry
   }
 
   if (framework === "cypress") {
-    const retriesOn = named(/^cypress\.config\./).some((file) =>
-      /\bretries\s*:\s*[1-9]|\brunMode\s*:\s*[1-9]/.test(file.content),
+    const retriesOn = named(/^cypress\.config\./).some(
+      (file) => setsNonZero(file.content, "retries") || setsNonZero(file.content, "runMode"),
     );
     if (!retriesOn) {
       return undefined;
@@ -158,6 +154,14 @@ export function adviseRetries(framework: Framework, signals: RepoSignals): Retry
   }
 
   return undefined;
+}
+
+/** True when `key: <value>` appears with a value other than a literal `0` or a nested object. */
+function setsNonZero(content: string, key: "retries" | "runMode"): boolean {
+  return [...content.matchAll(new RegExp(`\\b${key}\\s*:\\s*([^,\\n}]+)`, "g"))].some((match) => {
+    const value = match[1]?.trim() ?? "0";
+    return value !== "0" && !value.startsWith("{");
+  });
 }
 
 /** A concrete, copy-pasteable fix for a framework that uploads no parseable reports. */
