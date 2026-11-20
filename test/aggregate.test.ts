@@ -40,7 +40,7 @@ describe("aggregate grouping", () => {
 });
 
 describe("aggregate signals", () => {
-  it("counts statuses, flaky/retried/rerun runs, and distinct fingerprints", () => {
+  it("counts statuses, flaky/retried runs, and distinct fingerprints", () => {
     const rows = aggregate([
       ev({ status: "passed", run: { run_id: 1, sha: "s1" } }),
       ev({
@@ -60,17 +60,15 @@ describe("aggregate signals", () => {
         ],
         run: { run_id: 4, sha: "s4" },
       }),
-      ev({ status: "passed", run: { run_id: 5, run_attempt: 2, sha: "s5" } }),
     ]);
 
     const [row] = rows;
-    expect(row?.totalRuns).toBe(5);
-    expect(row?.passed).toBe(3);
+    expect(row?.totalRuns).toBe(4);
+    expect(row?.passed).toBe(2);
     expect(row?.failed).toBe(1);
     expect(row?.skipped).toBe(1);
     expect(row?.flakyRuns).toBe(1);
     expect(row?.retriedRuns).toBe(1);
-    expect(row?.rerunRuns).toBe(1);
     expect(row?.fingerprints).toBe(2);
   });
 

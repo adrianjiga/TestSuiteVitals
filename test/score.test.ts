@@ -15,7 +15,6 @@ function agg(over: Partial<TestAggregate> = {}): TestAggregate {
     skipped: 0,
     flakyRuns: 0,
     retriedRuns: 0,
-    rerunRuns: 0,
     flips: 0,
     flipPairs: 0,
     distinctShas: 0,
@@ -40,16 +39,26 @@ describe("scoreTest", () => {
     expect(result.score).toBe(0);
   });
 
-  it("weights pass-after-retry the heaviest (full retry-flake → 45)", () => {
+  it("weights pass-after-retry the heaviest (full retry-flake → 35)", () => {
     const result = scoreTest(agg({ passed: 10, flakyRuns: 10, distinctShas: 10 }));
     expect(result.signals.retryFlakeRate).toBe(1);
-    expect(result.score).toBe(45);
+    expect(result.score).toBe(35);
   });
 
-  it("counts same-commit intermittence (full intermittence → 30)", () => {
+  it("counts same-commit intermittence (full intermittence → 20)", () => {
     const result = scoreTest(agg({ passed: 5, failed: 5, distinctShas: 10, intermittentShas: 10 }));
     expect(result.signals.intermittenceRate).toBe(1);
-    expect(result.score).toBe(30);
+    expect(result.score).toBe(20);
+  });
+
+  it("scales flip rate and caps it, so frequent random flips saturate it (→ 30)", () => {
+    const coin = scoreTest(agg({ passed: 10, failed: 11, flips: 10, flipPairs: 20 }));
+    expect(coin.signals.flipRate).toBe(1);
+    expect(coin.score).toBe(30);
+    const quarter = scoreTest(agg({ passed: 10, failed: 11, flips: 5, flipPairs: 20 }));
+    expect(quarter.signals.flipRate).toBe(0.75);
+    // Alternating every run is still capped at 1.
+    expect(scoreTest(agg({ passed: 10, failed: 11, flips: 20, flipPairs: 20 })).score).toBe(30);
   });
 
   it("counts only failure modes beyond the first, and caps diversity", () => {

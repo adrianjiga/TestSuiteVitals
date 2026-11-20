@@ -7,14 +7,20 @@ export const DEFAULT_MIN_RUNS = 5;
 const FINGERPRINT_CAP = 4;
 
 /**
+ * Random failure at rate p flips 2p(1−p) of the time: 0.375 at 25%, 0.18 at 10%. Scaling by 3
+ * saturates the signal from about 20% random failure, and lets ~13% cross the flaky line alone.
+ */
+const FLIP_SCALE = 3;
+
+/**
  * Signal weights (sum to 1). Flakiness is *inconsistency*, so the inconsistency signals
- * (pass-after-retry, intermittence) dominate; a consistently-failing test is broken, not flaky,
- * and scores low because none of these fire.
+ * (pass-after-retry, flips, intermittence) dominate; a consistently-failing test is broken, not
+ * flaky, and scores low because none of these fire.
  */
 const WEIGHTS = {
-  retryFlake: 0.45,
-  intermittence: 0.3,
-  rerun: 0.1,
+  retryFlake: 0.35,
+  flip: 0.3,
+  intermittence: 0.2,
   diversity: 0.15,
 } as const;
 
@@ -24,8 +30,8 @@ export interface FlakeSignals {
   retryFlakeRate: number;
   /** Share of distinct commits that produced both a pass and a fail. */
   intermittenceRate: number;
-  /** Share of runs on a re-triggered workflow attempt. */
-  rerunRate: number;
+  /** Pass↔fail flips per consecutive push/schedule run pair, scaled and capped at 1. */
+  flipRate: number;
   /** Diversity of failure modes beyond the first (0 when there is one mode or none). */
   diversity: number;
 }
@@ -57,14 +63,14 @@ export function scoreTest(aggregate: TestAggregate, options: ScoreOptions = {}):
   const signals: FlakeSignals = {
     retryFlakeRate: ratio(aggregate.flakyRuns, eligibleRuns),
     intermittenceRate: ratio(aggregate.intermittentShas, aggregate.distinctShas),
-    rerunRate: ratio(aggregate.rerunRuns, eligibleRuns),
+    flipRate: Math.min(1, FLIP_SCALE * ratio(aggregate.flips, aggregate.flipPairs)),
     diversity: diversity(aggregate.fingerprints),
   };
 
   const raw =
     WEIGHTS.retryFlake * signals.retryFlakeRate +
     WEIGHTS.intermittence * signals.intermittenceRate +
-    WEIGHTS.rerun * signals.rerunRate +
+    WEIGHTS.flip * signals.flipRate +
     WEIGHTS.diversity * signals.diversity;
 
   return {

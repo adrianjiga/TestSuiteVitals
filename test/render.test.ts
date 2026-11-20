@@ -16,7 +16,6 @@ function agg(id: string, over: Partial<TestAggregate> = {}): TestAggregate {
     skipped: 0,
     flakyRuns: 0,
     retriedRuns: 0,
-    rerunRuns: 0,
     flips: 0,
     flipPairs: 0,
     distinctShas: 0,
@@ -86,7 +85,7 @@ describe("renderReportJson", () => {
   it("emits eligible tests first with score fields, parseable as JSON", () => {
     const rows = JSON.parse(renderReportJson(ranked)) as Array<{ id: string; eligible: boolean }>;
     expect(rows.map((r) => r.id)).toEqual(["flaky", "stable", "tiny"]);
-    expect(rows[0]).toMatchObject({ id: "flaky", score: 45, eligible: true });
+    expect(rows[0]).toMatchObject({ id: "flaky", score: 35, eligible: true });
     expect(rows.at(-1)).toMatchObject({ id: "tiny", eligible: false });
   });
 });
