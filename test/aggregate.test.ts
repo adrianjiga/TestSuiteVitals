@@ -226,6 +226,19 @@ describe("aggregate age weighting", () => {
     expect(rows.find((r) => r.id === "new")?.weighted.passed).toBe(1);
   });
 
+  it("does not let a skipped run refresh a commit's weight", () => {
+    const [row] = aggregate(
+      [
+        ev({ run: { run_id: 1, sha: "a", started_at: day(0) } }),
+        failed({ run: { run_id: 2, sha: "a", started_at: day(0) } }),
+        ev({ status: "skipped", run: { run_id: 3, sha: "a", started_at: day(2) } }),
+      ],
+      { halfLifeMs: DAY },
+    );
+    expect(row?.weighted.distinctShas).toBe(0.25);
+    expect(row?.weighted.intermittentShas).toBe(0.25);
+  });
+
   it("weights commits, failure modes and flip pairs by their latest run", () => {
     const [row] = aggregate(
       [
