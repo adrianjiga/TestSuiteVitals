@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--half-life` for `report` and `dashboard`: runs count less the older they are, measured from
   the newest run, so a test flaky months ago that has passed since fades out. Defaults to `14d`;
   `off` weighs every run equally (0019)
+- A `WHY` column in `report` and the dashboard naming the signal worth the most points, such as
+  `flips 9/40` or `3 retry-passes`; `--json` adds it as `top_signal` and `reason`
 
 ### Changed
 

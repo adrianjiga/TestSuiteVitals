@@ -539,7 +539,10 @@ prints a header, the top `--limit` (default 20) eligible tests, and either the
 below-threshold tests (`--all`) or a one-line count of them. Columns are score,
 test label (`file › describe › test`, plus `[k=v,…]` with `--by-matrix`,
 truncated to 46 characters with `…`), eligible runs, retry %, intermittent /
-distinct commits, and failure modes.
+distinct commits, failure modes, and `WHY`. `scoreTest` records the signal
+worth the most points (weight × signal) as `topSignal`, and `explainScore`
+(`src/report/explain.ts`) phrases it from the plain counts, such as
+`flips 6/39`; `WHY` is left off a row whose score has no contributor.
 
 Each column is padded to its visible width _before_ color is applied, so ANSI
 codes never break alignment. The palette (`src/colors.ts`) is semantic: scores
@@ -558,9 +561,9 @@ document with inline CSS and no scripts or external requests. Each row shows
 the score, the test name (the last title segment leads; file and suites follow
 dimmed; the full label is the tooltip), a sparkline of the latest 24 outcomes
 (bar height and color per passed / flaky / failed / skipped), the three signal
-columns, and a status: `flaky` (≥ 50), `unstable` (≥ 20), `watch` (> 0),
-`healthy` (0), or `low data` when below `--min-runs`. Every artifact-derived
-string goes through `esc`, which escapes `& < > " '`.
+columns, the `explainScore` text, and a status: `flaky` (≥ 50), `unstable` (≥
+20), `watch` (> 0), `healthy` (0), or `low data` when below `--min-runs`. Every
+artifact-derived string goes through `esc`, which escapes `& < > " '`.
 
 ### Terminal safety
 

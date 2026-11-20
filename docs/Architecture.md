@@ -225,7 +225,7 @@ scoring opinion.
 
 ```ts
 FlakeScore  { score: 0..100, rawScore, confidence, eligible, eligibleRuns, signals: {
-                retryFlakeRate, flipRate, intermittenceRate, diversity } }
+                retryFlakeRate, flipRate, intermittenceRate, diversity }, topSignal? }
 ScoredTest  { aggregate: TestAggregate, score: FlakeScore }
 RankedTests { eligible: ScoredTest[], belowThreshold: ScoredTest[] }
 ```
@@ -338,6 +338,7 @@ the reasoning is in the decision records under [decisions/](decisions/).
 | `src/report/aggregate.ts`         | `Aggregator` and `TestAggregate`                                                    |
 | `src/report/score.ts`             | `scoreTest`, weights, `DEFAULT_MIN_RUNS`                                            |
 | `src/report/rank.ts`              | `rankTests`, `parseSince`                                                           |
+| `src/report/explain.ts`           | `explainScore`: the `WHY` text for a score's top signal                             |
 | `src/report/render.ts`            | Terminal table and `--json` output                                                  |
 | `src/report/dashboard.ts`         | Self-contained HTML dashboard with sparklines                                       |
 | `src/doctor/diagnose.ts`          | Framework detection, manifest path selection, per-framework fixes                   |

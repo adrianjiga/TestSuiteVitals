@@ -172,9 +172,9 @@ Ctrl-C. A lock whose pid is no longer running is removed automatically with
 ```text
 Flaky tests · acme/shop · 4 tests (last 30d)
 
- SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
-    38  tests/checkout.spec.ts › Checkout › applies a…     40     38%      9/31      3
-     4  tests/e2e/webTables.spec.js › Web Tables › sh…     40     10%      2/31      1
+ SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES  WHY
+    38  tests/checkout.spec.ts › Checkout › applies a…     40     38%      9/31      3  flips 6/39
+     4  tests/e2e/webTables.spec.js › Web Tables › sh…     40     10%      2/31      1  4 retry-passes
      0  tests/login.spec.ts › Login › rejects a bad p…     40      0%      0/31      0
 
 1 test(s) below the min-runs threshold hidden (--all to show).
@@ -191,6 +191,10 @@ The heading shows the repo, the number of tests scored, and the active
 | `RETRY%`   | Share of those runs that passed only after a failed retry                                                |
 | `INTERMIT` | Commits (per matrix cell) that both passed and failed / commits seen                                     |
 | `MODES`    | Distinct failure fingerprints. More than one means the test fails in different ways                      |
+| `WHY`      | The signal worth the most points, with its counts (below). Empty for a score of 0                        |
+
+`WHY` reads `n retry-passes`, `flips f/p` (pass↔fail flips over consecutive
+push/schedule run pairs), `pass+fail on i/n commits` or `n failure modes`.
 
 At most `--limit` (default 20) rows are shown. Tests with fewer than
 `--min-runs` runs are summarized in the last line, or listed under
@@ -213,16 +217,18 @@ score), ignoring `--limit` and `--all`:
     "title_path": ["Checkout", "applies a discount code"],
     "framework": "playwright",
     "score": 38,
-    "raw_score": 42,
+    "raw_score": 43,
     "confidence": 0.8888888888888888,
     "eligible": true,
     "eligible_runs": 40,
     "signals": {
       "retryFlakeRate": 0.375,
-      "flipRate": 0.45,
+      "flipRate": 0.46153846153846156,
       "intermittenceRate": 0.2903225806451613,
       "diversity": 0.6666666666666666
     },
+    "top_signal": "flipRate",
+    "reason": "flips 6/39",
     "totals": {
       "runs": 40,
       "passed": 37,
@@ -241,6 +247,8 @@ score), ignoring `--limit` and `--all`:
 | `matrix`                  | Present only with `--by-matrix`                                                                                |
 | `score`                   | `raw_score` × `confidence`, rounded; what the table shows and ranks by                                         |
 | `raw_score`               | The signal blend, 0–100, before the small-sample discount                                                      |
+| `top_signal`              | The `signals` key worth the most points, or `null` when none contributes                                       |
+| `reason`                  | The table's `WHY` text; empty when `top_signal` is `null`                                                      |
 | `confidence`              | `n / (n + 5)`, `n` = passed + failed runs weighted by age with `--half-life` (0018, 0019)                      |
 | `eligible`                | `eligible_runs >= --min-runs`                                                                                  |
 | `signals`                 | The four 0–1 inputs to the score; weights are in [API-Interface-Design.md](API-Interface-Design.md#flakescore) |
@@ -263,7 +271,7 @@ it can be opened locally, attached to a CI run or published as-is. It is a dark
 - **One row per eligible test**, sorted like `report`: the score; the test name
   first, with file and suites dimmed after it (the full path on hover); a
   sparkline of up to the 24 most recent runs, oldest to newest; then retry %,
-  intermittent/seen commits and failure modes.
+  intermittent/seen commits, failure modes, and why (as the table's `WHY`).
 - **Sparkline bars** by outcome: short green for a pass, taller amber for a
   pass after retry, tallest red for a failure, short grey for a skip.
 - **Status label** by score: `healthy` (0), `watch` (1–19), `unstable`

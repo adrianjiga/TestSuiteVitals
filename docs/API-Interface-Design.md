@@ -146,14 +146,15 @@ commit does not count as intermittent. Flips are counted the same way, per
 
 `scoreTest(aggregate, { minRuns })` in `src/report/score.ts`.
 
-| Field          | Type           | Notes                                                |
-| -------------- | -------------- | ---------------------------------------------------- |
-| `score`        | `number`       | 0–100, rounded: `rawScore` × `confidence`            |
-| `rawScore`     | `number`       | 0–100, rounded: the signal blend before discount     |
-| `confidence`   | `number`       | `n / (n + 5)`, `n` = weighted passed + failed (0018) |
-| `eligible`     | `boolean`      | `eligibleRuns >= minRuns` (default `minRuns` is 5)   |
-| `eligibleRuns` | `number`       | `passed + failed`; skips do not count                |
-| `signals`      | `FlakeSignals` | The four normalized inputs, each 0–1                 |
+| Field          | Type                  | Notes                                                |
+| -------------- | --------------------- | ---------------------------------------------------- |
+| `score`        | `number`              | 0–100, rounded: `rawScore` × `confidence`            |
+| `rawScore`     | `number`              | 0–100, rounded: the signal blend before discount     |
+| `confidence`   | `number`              | `n / (n + 5)`, `n` = weighted passed + failed (0018) |
+| `eligible`     | `boolean`             | `eligibleRuns >= minRuns` (default `minRuns` is 5)   |
+| `eligibleRuns` | `number`              | `passed + failed`; skips do not count                |
+| `signals`      | `FlakeSignals`        | The four normalized inputs, each 0–1                 |
+| `topSignal`    | `keyof FlakeSignals?` | The signal worth the most points; unset at 0         |
 
 | Signal              | Weight | Definition                                                                    |
 | ------------------- | ------ | ----------------------------------------------------------------------------- |

@@ -50,16 +50,17 @@ signals:
 
 Skipped runs do not count. Recent runs count more: a run 14 days older than the newest one weighs
 half as much (`--half-life`, or `off` to weigh all runs equally), so a test that was flaky months
-ago and has passed since fades out. The blend is then discounted for small samples: a test
-keeps `n / (n + 5)` of it, where `n` is its weighted passed-or-failed runs, so 1 bad run in 5
-ranks below 20 in 100. A test with fewer than 5 such runs (`--min-runs`) is scored but set aside. The report shows
-the signals next to the score, so every ranking can be explained.
+ago and has passed since fades out. The blend is then discounted for small samples: a test keeps
+`n / (n + 5)` of it, where `n` is its weighted passed-or-failed runs, so 1 bad run in 5 ranks below
+20 in 100. A test with fewer than 5 such runs (`--min-runs`) is scored but set aside. The report
+shows the signals next to the score, and a `WHY` column names the one worth the most points (for
+example `flips 9/40` or `3 retry-passes`), so every ranking can be explained.
 
 ```text
 Flaky tests · owner/repo · 3 tests
 
- SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES
-    25  webTables.spec.js › should delete a record          8    100%       0/8      2
+ SCORE  TEST                                            RUNS  RETRY%  INTERMIT  MODES  WHY
+    25  webTables.spec.js › should delete a record          8    100%       0/8      2  8 retry-passes
      0  login.spec.js › remembers the session               8      0%       0/8      0
 
 1 test(s) below the min-runs threshold hidden (--all to show).
