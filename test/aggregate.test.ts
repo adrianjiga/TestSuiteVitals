@@ -238,7 +238,8 @@ describe("aggregate age weighting", () => {
     // Commit a (latest day 1) is intermittent; commit b (day 2) is not.
     expect(row?.weighted.distinctShas).toBe(1.5);
     expect(row?.weighted.intermittentShas).toBe(0.5);
-    // fp1 last seen on day 0 (0.25), fp2 on day 2 (1). expect(row?.weighted.fingerprints).toBe(1.25);
+    // fp1 last seen on day 0 (0.25), fp2 on day 2 (1).
+    expect(row?.weighted.fingerprints).toBe(1.25);
     // fail → pass (day 1, weight 0.5) → fail (day 2, weight 1): both pairs flip.
     expect(row?.weighted.flipPairs).toBe(1.5);
     expect(row?.weighted.flips).toBe(1.5);
