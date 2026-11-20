@@ -174,6 +174,17 @@ describe("adviseRetries", () => {
     ).toBe("suggest");
   });
 
+  it("accepts a blob reporter passed on the workflow's command line", () => {
+    const advice = adviseRetries(
+      "playwright",
+      signals({
+        "playwright.config.ts": "export default { reporter: 'html' };",
+        ".github/workflows/ci.yml": "run: npx playwright test --shard=1/4 --reporter=blob",
+      }),
+    );
+    expect(advice?.kind).toBe("suggest");
+  });
+
   it("stays quiet when Playwright retries are on in the config or the workflow", () => {
     expect(
       adviseRetries(

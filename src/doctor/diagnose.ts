@@ -101,7 +101,10 @@ export function adviseRetries(framework: Framework, signals: RepoSignals): Retry
   if (framework === "playwright") {
     const configs = named(/^playwright\.config\./);
     // Only the blob reporter keeps every retry; with JUnit or HTML a rescued failure is a pass.
-    if (!configs.some((file) => /['"`]blob['"`]/.test(file.content))) {
+    const usesBlob =
+      configs.some((file) => /['"`]blob['"`]/.test(file.content)) ||
+      workflows.some((file) => /--reporter[= ]+blob\b/.test(file.content));
+    if (!usesBlob) {
       return undefined;
     }
     const inConfig = configs.some((file) => setsNonZero(file.content, "retries"));
